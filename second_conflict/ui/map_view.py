@@ -33,6 +33,7 @@ class MapView:
         self._on_star_click = None   # callback(star_idx, second_click)
         self._star_sprites: dict = {}   # colour tuple → pygame.Surface
         self._sprites_loaded = False
+        self._bounds: tuple[int, int] = self._coord_bounds()
 
     # ------------------------------------------------------------------
     # Public API
@@ -43,6 +44,7 @@ class MapView:
         self._selected_star = None
         self._sprites_loaded = False
         self._star_sprites.clear()
+        self._bounds = self._coord_bounds()
 
     def set_star_click_callback(self, cb):
         """cb(star_idx: int, second_click: bool) → None"""
@@ -137,14 +139,21 @@ class MapView:
         except Exception:
             pass
 
+    def _coord_bounds(self) -> tuple[int, int]:
+        """Return (max_x, max_y) across all stars, used for scaling."""
+        if not self.state.stars:
+            return 255, 255
+        max_x = max(s.x for s in self.state.stars)
+        max_y = max(s.y for s in self.state.stars)
+        return max(max_x, 1), max(max_y, 1)
+
     def _star_pos(self, star) -> tuple[int, int]:
         """Map star (x, y) coordinates to screen pixel position."""
-        # Star coords are in the range ~0-255 (byte values from the file).
-        # Scale to fit within self.rect with MAP_MARGIN padding.
         usable_w = self.rect.width  - 2 * MAP_MARGIN
         usable_h = self.rect.height - 2 * MAP_MARGIN
-        px = self.rect.x + MAP_MARGIN + int(star.x / 255 * usable_w)
-        py = self.rect.y + MAP_MARGIN + int(star.y / 255 * usable_h)
+        max_x, max_y = self._bounds
+        px = self.rect.x + MAP_MARGIN + int(star.x / max_x * usable_w)
+        py = self.rect.y + MAP_MARGIN + int(star.y / max_y * usable_h)
         return px, py
 
     def _star_at(self, pos: tuple[int, int]) -> int | None:

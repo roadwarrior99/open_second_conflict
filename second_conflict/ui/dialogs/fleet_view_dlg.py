@@ -11,14 +11,14 @@ from second_conflict.model.constants import FREE_SLOT, SHIP_NAMES, ShipType
 from second_conflict.model.game_state import GameState
 
 _ROW_H = 18
-_HDR_COLS = ["Slot", "Dest", "Turns", "W", "SS", "T", "M", "S", "P", "Typ"]
-_COL_XS   = [0,  36,  66,  102, 122, 142, 162, 182, 202, 222]
+_HDR_COLS = ["Slot", "Dest", "Turns", "War", "Stlth", "Trnsp", "Msle", "Scout", "Probe", "Type"]
+_COL_XS   = [0,     40,     80,      130,   170,     215,     260,    300,     345,     390]
 
 
 class FleetViewDialog(BaseDialog):
     def __init__(self, screen: pygame.Surface, state: GameState,
                  player_faction: int):
-        super().__init__(screen, "Fleet Status", width=500, height=380)
+        super().__init__(screen, "Fleet Status", width=620, height=380)
         self.state          = state
         self.player_faction = player_faction
 
