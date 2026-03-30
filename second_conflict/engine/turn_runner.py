@@ -119,3 +119,8 @@ def _check_victory(state: GameState):
     elif len(active) == 0:
         state.game_over = True
         state.winner_slot = None
+    elif not state.human_players():
+        # All human players eliminated — game over even if AI players remain
+        state.game_over = True
+        state.winner_slot = None
+        state.add_event('event', 0, "All human players have been eliminated.")

@@ -328,12 +328,13 @@ def _do_end_turn(screen, state, map_view, side_panel, sys_panel):
             if rec.attacker_faction == faction or rec.defender_faction == faction:
                 CombatAnimation(screen, rec, state).run()
 
-    # Show event log for this player
-    player_events = [e for e in new_events
-                     if e.player_faction == faction or e.category in ('combat', 'event')]
-    if player_events:
-        dlg = EventsDialog(screen, player_events)
-        dlg.run()
+    # Show event log for this player (if option enabled)
+    if state.options.show_events_log:
+        player_events = [e for e in new_events
+                         if e.player_faction == faction or e.category in ('combat', 'event')]
+        if player_events:
+            dlg = EventsDialog(screen, player_events)
+            dlg.run()
 
     # Show score dialog if game over
     if state.game_over:
