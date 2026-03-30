@@ -19,7 +19,7 @@ from second_conflict.model.constants import (
 )
 from second_conflict.model.game_state import GameOptions, GameState
 from second_conflict.model.player import Player
-from second_conflict.model.star import Star, GarrisonEntry
+from second_conflict.model.star import Star, Planet
 from second_conflict.model.fleet import FleetInTransit, EmpireOrder
 
 
@@ -72,29 +72,34 @@ def write_bytes(state: GameState) -> bytes:
             rec[2] = star.y
 
         rec[3] = star.owner_faction_id & 0xFF
-        # num_garrison count
-        valid_garrison = [g for g in star.garrison if g.ship_count > 0]
-        rec[5] = min(len(valid_garrison), 8)
+        rec[5] = max(0, min(255, star.base_prod))
 
         if star.star_id != 0:
             rec[9]  = ord(star.planet_type) if isinstance(star.planet_type, str) else star.planet_type
             rec[6]  = max(0, min(255, star.resource))
 
-        # TLV garrison entries from byte +11, each 7 bytes
-        for gi, g in enumerate(valid_garrison[:8]):
-            tlv = 11 + gi * 7
-            rec[tlv]     = g.owner_faction_id & 0xFF
-            rec[tlv + 1] = 0x01
-            rec[tlv + 2] = int(g.ship_type) & 0xFF
-            struct.pack_into('<I', rec, tlv + 3, max(0, g.ship_count))
+        # byte[10] = planet count
+        rec[10] = min(len(star.planets), 10)
 
-        # Production accumulators
-        if len(rec) > 90:
-            struct.pack_into('<h', rec, 81, max(-32768, min(32767, star.prod_warships)))
-            struct.pack_into('<h', rec, 83, max(-32768, min(32767, star.prod_transports)))
-            struct.pack_into('<h', rec, 85, max(-32768, min(32767, star.prod_stealth)))
-            struct.pack_into('<h', rec, 87, max(-32768, min(32767, star.prod_stealthships)))
-            struct.pack_into('<h', rec, 89, max(-32768, min(32767, star.prod_population)))
+        # TLV planet entries from byte +11, each 7 bytes
+        # Layout: [0]=owner [1]=morale [2]=recruit [3-4]=troops int16 [5-6]=0
+        for pi, planet in enumerate(star.planets[:10]):
+            tlv = 11 + pi * 7
+            if tlv + 7 > STAR_STRIDE:
+                break
+            rec[tlv]     = planet.owner_faction_id & 0xFF
+            rec[tlv + 1] = planet.morale & 0xFF
+            rec[tlv + 2] = planet.recruit & 0xFF
+            struct.pack_into('<h', rec, tlv + 3, max(0, min(32767, planet.troops)))
+            rec[tlv + 5] = 0
+            rec[tlv + 6] = 0
+
+        # Ship counts at fixed offsets (int16 LE)
+        if len(rec) > 98:
+            struct.pack_into('<h', rec, 81, max(0, min(32767, star.warships)))
+            struct.pack_into('<h', rec, 83, max(0, min(32767, star.transports)))
+            struct.pack_into('<h', rec, 85, max(0, min(32767, star.stealthships)))
+            struct.pack_into('<h', rec, 97, max(0, min(32767, star.missiles)))
 
         buf[off : off + STAR_STRIDE] = rec
 
@@ -110,8 +115,8 @@ def write_bytes(state: GameState) -> bytes:
         rec[4]  = fleet.flag_unknown & 0xFF
         rec[5]  = fleet.created_flag & 0xFF
         struct.pack_into('<h', rec, 6,  max(0, fleet.warships))
-        struct.pack_into('<h', rec, 8,  max(0, fleet.stealthships))
-        struct.pack_into('<h', rec, 10, max(0, fleet.transports))
+        struct.pack_into('<h', rec, 8,  max(0, fleet.troop_ships))
+        struct.pack_into('<h', rec, 10, max(0, fleet.stealthships))
         struct.pack_into('<h', rec, 12, max(0, fleet.missiles))
         struct.pack_into('<h', rec, 14, max(0, fleet.scouts))
         struct.pack_into('<h', rec, 16, max(0, fleet.probes))
@@ -214,10 +219,10 @@ def parse_bytes(data: bytes) -> GameState:
         if star.owner_faction_id not in (EMPIRE_FACTION, 0, 0xFF):
             star.owner_faction_id = slot_to_faction.get(
                 star.owner_faction_id, star.owner_faction_id)
-        for g in star.garrison:
-            if g.owner_faction_id not in (EMPIRE_FACTION, 0, 0xFF):
-                g.owner_faction_id = slot_to_faction.get(
-                    g.owner_faction_id, g.owner_faction_id)
+        for planet in star.planets:
+            if planet.owner_faction_id not in (EMPIRE_FACTION, 0, 0xFF):
+                planet.owner_faction_id = slot_to_faction.get(
+                    planet.owner_faction_id, planet.owner_faction_id)
     for fleet in fleets:
         if fleet.owner_faction_id not in (EMPIRE_FACTION, 0, 0xFF):
             fleet.owner_faction_id = slot_to_faction.get(
@@ -300,48 +305,54 @@ def _parse_star_record(index: int, rec: bytes) -> Star:
         x = rec[1]
         y = rec[2]
 
-    owner          = rec[3]
-    secondary      = rec[4]
-    num_garrison   = rec[5]   # number of TLV entries
+    owner     = rec[3]
+    secondary = rec[4]
+    base_prod = rec[5] if star_id != 0 else 0   # signed base prod bonus / planet capacity
+    resource  = rec[6] if star_id != 0 else 1    # production rate
 
-    # Planet type char is at byte +9 in standard records
-    # For star 0, this byte holds x-coord, so planet type is at byte +6... actually
-    # star 0's planet type is NOT at byte 9 (that's x). We store it from byte 6
-    # for star 0 and byte 9 for others. This needs further verification.
+    # Planet type char is at byte +9 in standard records.
+    # For star 0 byte[9] holds x-coord, so fall back to byte[6].
     if star_id == 0:
         planet_type_byte = rec[6]
     else:
         planet_type_byte = rec[9]
-
     planet_type = chr(planet_type_byte) if 32 <= planet_type_byte < 127 else 'N'
 
-    # Production fields
-    base_prod = rec[5] if star_id != 0 else 0   # signed base prod bonus
-    resource  = rec[6] if star_id != 0 else 1    # production rate
+    # byte[10] = number of planets (TLV entries)
+    num_planets = rec[10] if len(rec) > 10 else 0
 
-    # Parse TLV garrison entries starting at byte +11
-    garrison = []
-    for g in range(num_garrison):
-        tlv_off = 11 + g * 7
+    # Parse TLV planet entries starting at byte +11 (7 bytes each).
+    # Corrected layout from Ghidra decompilation:
+    #   [0] = owner_faction_id
+    #   [1] = morale (signed byte)
+    #   [2] = recruit rate
+    #   [3-4] = troop count (int16 LE)
+    #   [5-6] = 0 (unused)
+    planets = []
+    for pi in range(num_planets):
+        tlv_off = 11 + pi * 7
         if tlv_off + 7 > len(rec):
             break
-        g_owner     = rec[tlv_off]
-        g_marker    = rec[tlv_off + 1]
-        g_ship_type = rec[tlv_off + 2]
-        g_count     = struct.unpack_from('<I', rec, tlv_off + 3)[0]
-        if g_marker == 0x01 and 1 <= g_ship_type <= 7:
-            garrison.append(GarrisonEntry(
-                owner_faction_id=g_owner,
-                ship_type=g_ship_type,
-                ship_count=g_count,
-            ))
+        p_owner   = rec[tlv_off]
+        p_morale  = rec[tlv_off + 1]
+        p_recruit = rec[tlv_off + 2]
+        p_troops  = struct.unpack_from('<h', rec, tlv_off + 3)[0]
+        planets.append(Planet(
+            owner_faction_id=p_owner,
+            morale=p_morale,
+            recruit=p_recruit,
+            troops=max(0, p_troops),
+        ))
 
-    # Production accumulators at fixed offsets (int16 LE)
-    prod_warships    = struct.unpack_from('<h', rec, 81)[0]  if len(rec) > 82 else 0
-    prod_transports  = struct.unpack_from('<h', rec, 83)[0]  if len(rec) > 84 else 0
-    prod_stealth     = struct.unpack_from('<h', rec, 85)[0]  if len(rec) > 86 else 0
-    prod_stealths    = struct.unpack_from('<h', rec, 87)[0]  if len(rec) > 88 else 0
-    prod_population  = struct.unpack_from('<h', rec, 89)[0]  if len(rec) > 90 else 0
+    # If no planets parsed, seed with one default planet owned by the star owner
+    if not planets:
+        planets.append(Planet(owner_faction_id=owner, morale=1, recruit=3, troops=0))
+
+    # Ship counts at fixed offsets (int16 LE)
+    warships     = max(0, struct.unpack_from('<h', rec, 81)[0]) if len(rec) > 82 else 0
+    transports   = max(0, struct.unpack_from('<h', rec, 83)[0]) if len(rec) > 84 else 0
+    stealthships = max(0, struct.unpack_from('<h', rec, 85)[0]) if len(rec) > 86 else 0
+    missiles     = max(0, struct.unpack_from('<h', rec, 97)[0]) if len(rec) > 98 else 0
 
     return Star(
         star_id=star_id,
@@ -352,12 +363,11 @@ def _parse_star_record(index: int, rec: bytes) -> Star:
         planet_type=planet_type,
         resource=resource,
         base_prod=base_prod,
-        garrison=garrison,
-        prod_warships=prod_warships,
-        prod_transports=prod_transports,
-        prod_stealth=prod_stealth,
-        prod_stealthships=prod_stealths,
-        prod_population=prod_population,
+        planets=planets,
+        warships=warships,
+        transports=transports,
+        stealthships=stealthships,
+        missiles=missiles,
         _raw=bytes(rec),
     )
 
@@ -384,15 +394,15 @@ def _parse_fleet_transit(data: bytes) -> list:
         turns          = struct.unpack_from('<h', rec, 2)[0]
         flag_unknown   = rec[4]
         created_flag   = rec[5]
-        warships       = struct.unpack_from('<h', rec, 6)[0]
-        stealthships   = struct.unpack_from('<h', rec, 8)[0]
-        transports     = struct.unpack_from('<h', rec, 10)[0]
-        missiles       = struct.unpack_from('<h', rec, 12)[0]
-        scouts         = struct.unpack_from('<h', rec, 14)[0]
-        probes         = struct.unpack_from('<h', rec, 16)[0]
-        type_byte      = rec[18]
-        fleet_type     = chr(type_byte) if 32 <= type_byte < 127 else 'C'
-        src_star       = rec[19]
+        warships     = struct.unpack_from('<h', rec, 6)[0]
+        troop_ships  = struct.unpack_from('<h', rec, 8)[0]
+        stealthships = struct.unpack_from('<h', rec, 10)[0]
+        missiles     = struct.unpack_from('<h', rec, 12)[0]
+        scouts       = struct.unpack_from('<h', rec, 14)[0]
+        probes       = struct.unpack_from('<h', rec, 16)[0]
+        type_byte    = rec[18]
+        fleet_type   = chr(type_byte) if 32 <= type_byte < 127 else 'C'
+        src_star     = rec[19]
 
         fleets.append(FleetInTransit(
             slot=i,
@@ -402,8 +412,8 @@ def _parse_fleet_transit(data: bytes) -> list:
             fleet_type_char=fleet_type,
             src_star=src_star,
             warships=max(0, warships),
+            troop_ships=max(0, troop_ships),
             stealthships=max(0, stealthships),
-            transports=max(0, transports),
             missiles=max(0, missiles),
             scouts=max(0, scouts),
             probes=max(0, probes),

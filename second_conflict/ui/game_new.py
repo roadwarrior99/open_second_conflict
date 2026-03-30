@@ -5,11 +5,11 @@ Generates a random galaxy layout when no scenario file is specified.
 import math
 import random
 from second_conflict.model.constants import (
-    EMPIRE_FACTION, PLAYER_COLOURS, PlanetType, ShipType, MAX_TRANSIT_FLEETS,
+    EMPIRE_FACTION, PlanetType, MAX_TRANSIT_FLEETS,
 )
 from second_conflict.model.game_state import GameState, GameOptions
 from second_conflict.model.player import Player
-from second_conflict.model.star import Star, GarrisonEntry
+from second_conflict.model.star import Star, Planet
 from second_conflict.model.fleet import FleetInTransit, EmpireOrder
 from second_conflict.util.rng import rand as grnd
 
@@ -25,8 +25,9 @@ _PLANET_POOL = (
     [PlanetType.NEUTRAL]   * 3
 )
 
-_HOME_GARRISON_WARSHIPS = 20   # ships at each player's starting star
-_EMPIRE_GARRISON        = 5    # ships at Empire stars at game start
+_HOME_GARRISON_WARSHIPS    = 20  # warships at each player's starting star
+_HOME_GARRISON_TRANSPORTS  = 5   # starting transport ships (needed to dispatch troops)
+_EMPIRE_WARSHIPS           = 5   # warships at Empire stars at game start
 _STAR_COUNT             = 26
 
 
@@ -38,7 +39,7 @@ def build_new_game(options: GameOptions, names: list[str],
 
     # Build players
     for i, name in enumerate(names):
-        faction_id = i + 1   # faction IDs 1-based
+        faction_id = i + 1
         p = Player(
             slot       = i,
             faction_id = faction_id,
@@ -61,22 +62,17 @@ def build_new_game(options: GameOptions, names: list[str],
         star.owner_faction_id = player.faction_id
         star.planet_type = PlanetType.WARSHIP
         star.resource = 10
-        # Starting garrison
-        star.garrison.append(GarrisonEntry(
-            owner_faction_id=player.faction_id,
-            ship_type=int(ShipType.WARSHIP),
-            ship_count=_HOME_GARRISON_WARSHIPS,
-        ))
+        star.warships    = _HOME_GARRISON_WARSHIPS
+        star.transports  = _HOME_GARRISON_TRANSPORTS
+        # Set all planets to be owned by this player
+        for p in star.planets:
+            p.owner_faction_id = player.faction_id
 
-    # Remaining stars go to the Empire with a small garrison
-    for i, star in enumerate(stars):
+    # Remaining stars go to the Empire with a small warship garrison
+    for star in stars:
         if star.owner_faction_id != EMPIRE_FACTION:
             continue
-        star.garrison.append(GarrisonEntry(
-            owner_faction_id=EMPIRE_FACTION,
-            ship_type=int(ShipType.WARSHIP),
-            ship_count=_EMPIRE_GARRISON,
-        ))
+        star.warships = _EMPIRE_WARSHIPS
 
     # Initialise empty fleet transit slots
     for i in range(MAX_TRANSIT_FLEETS):
@@ -101,12 +97,11 @@ def build_new_game(options: GameOptions, names: list[str],
 
 def _generate_stars(options: GameOptions) -> list[Star]:
     """Place _STAR_COUNT stars with random positions, avoiding overlap."""
-    rng = random.Random()   # independent RNG for layout (not the game RNG)
-    map_size = options.map_param   # 150 or 200
+    rng = random.Random()
+    map_size = options.map_param
 
-    # Scale to 0-255 byte range
     scale = 255 / map_size
-    min_sep = 20   # minimum pixel distance between stars
+    min_sep = 20
 
     positions: list[tuple[int, int]] = []
     attempts = 0
@@ -121,7 +116,6 @@ def _generate_stars(options: GameOptions) -> list[Star]:
             positions.append((cx, cy))
         attempts += 1
 
-    # Pad if we couldn't place enough
     while len(positions) < _STAR_COUNT:
         positions.append((rng.randint(0, map_size), rng.randint(0, map_size)))
 
@@ -133,7 +127,22 @@ def _generate_stars(options: GameOptions) -> list[Star]:
         px = min(255, int(cx * scale))
         py = min(255, int(cy * scale))
         pt = planet_pool[i % len(planet_pool)]
-        resource = rng.randint(3, 12)
+        resource    = rng.randint(3, 12)
+        num_planets = rng.randint(1, 7)
+        base_prod   = num_planets
+
+        # Create planet TLV entries owned by Empire initially
+        planets = []
+        for _ in range(num_planets):
+            recruit = rng.randint(2, 5)
+            troops  = rng.randint(5, 25)
+            planets.append(Planet(
+                owner_faction_id=EMPIRE_FACTION,
+                morale=1,
+                recruit=recruit,
+                troops=troops,
+            ))
+
         stars.append(Star(
             star_id          = i,
             x                = px,
@@ -141,34 +150,30 @@ def _generate_stars(options: GameOptions) -> list[Star]:
             owner_faction_id = EMPIRE_FACTION,
             planet_type      = pt,
             resource         = resource,
-            base_prod        = resource,
+            base_prod        = base_prod,
+            planets          = planets,
         ))
     return stars
 
 
 def _pick_home_stars(stars: list[Star], num_players: int) -> list[int]:
     """Spread home stars as evenly as possible around the map."""
-    # Simple approach: spread by angle from the centre
-    import math
     cx = sum(s.x for s in stars) / len(stars)
     cy = sum(s.y for s in stars) / len(stars)
 
-    # Sort stars by angle
     by_angle = sorted(
         range(len(stars)),
         key=lambda i: math.atan2(stars[i].y - cy, stars[i].x - cx)
     )
-    # Pick evenly spaced indices
     step = max(1, len(by_angle) // num_players)
     chosen = [by_angle[i * step] for i in range(num_players)]
-    # Ensure unique (shouldn't be an issue with 26 stars and ≤10 players)
+
     seen: set[int] = set()
     result = []
     for idx in chosen:
         if idx not in seen:
             result.append(idx)
             seen.add(idx)
-    # Fallback if somehow short
     for idx in range(len(stars)):
         if len(result) >= num_players:
             break

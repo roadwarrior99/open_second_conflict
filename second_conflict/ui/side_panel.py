@@ -122,15 +122,16 @@ class SidePanel:
                 f"Type: {star.planet_type}   Res: {star.resource}",
                 f"Owner: {owner_name}",
             ]
-            # Garrison summary
-            garrison_by_type: dict[int, int] = {}
-            for g in star.garrison:
-                if g.ship_count > 0:
-                    garrison_by_type[g.ship_type] = (
-                        garrison_by_type.get(g.ship_type, 0) + g.ship_count
-                    )
-            for ship_type, count in sorted(garrison_by_type.items()):
-                star_lines.append(f"  T{ship_type}: {count} ships")
+            # Ship summary
+            if star.warships:     star_lines.append(f"  WarShips:    {star.warships}")
+            if star.transports:   star_lines.append(f"  TranSports:  {star.transports}")
+            if star.stealthships: star_lines.append(f"  StealthShps: {star.stealthships}")
+            if star.missiles:     star_lines.append(f"  Missiles:    {star.missiles}")
+            # Occupation
+            occupied = sum(1 for p in star.planets
+                           if p.owner_faction_id != star.owner_faction_id and p.troops > 0)
+            if occupied:
+                star_lines.append(f"  Occupied: {occupied} planet(s)")
 
             hdr = self._font_body.render("Selected Star", True, LABEL_COL)
             surface.blit(hdr, (x, y))

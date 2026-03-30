@@ -3,23 +3,19 @@ from typing import List
 
 
 @dataclass
-class GarrisonEntry:
-    """One 7-byte TLV fleet entry stored inside a star record.
+class Planet:
+    """One TLV entry (7 bytes) inside a star record — represents a single planet.
 
-    On disk layout: [owner_faction_id] [0x01 marker] [ship_type] [count uint32 LE]
-    In-memory we also carry combat-state fields from the surrounding star bytes.
+    Binary layout (corrected from Ghidra decompilation):
+      [0]   owner_faction_id  — which faction controls this planet
+      [1]   morale            — signed byte (loyalty/morale of garrison)
+      [2]   recruit           — recruit rate (troops added per turn)
+      [3-6] troops            — troop count (uint32, int16 in practice)
     """
-    owner_faction_id: int   # faction byte (0x1a = Empire, others = player faction)
-    ship_type: int          # 1-7 matching ShipType enum
-    ship_count: int         # number of ships
-
-    # Per-TLV state bytes that sit adjacent in the star record
-    loyalty: int = 0        # signed byte: garrison loyalty (positive = loyal)
-    unrest: int = 0         # unsigned byte
-    strength: int = 0       # int16: garrison combat strength at this star
-
-    def is_empire(self) -> bool:
-        return self.owner_faction_id == 0x1A
+    owner_faction_id: int
+    morale: int = 1        # signed byte; 1 = neutral, higher = more loyal
+    recruit: int = 3       # troops recruited per turn
+    troops: int = 0        # current defending troops on this planet
 
 
 @dataclass
@@ -28,6 +24,12 @@ class Star:
 
     Coordinate layout for most stars (1-25): byte[0]=id, [1]=x, [2]=y, [3]=owner.
     Star 0 is anomalous: coords at [9],[10].
+
+    Ships (warships, transports, stealthships, missiles) belong to owner_faction_id
+    and are stored at fixed offsets at the end of the record (+0x51, +0x53, +0x55, +0x61).
+
+    Planets are the TLV entries at byte +11 (7 bytes each), one per planet.
+    Each planet has its own owner, morale, recruit rate, and troop count.
     """
     star_id: int                   # 0-based, 0-25
     x: int                         # map x coordinate
@@ -41,24 +43,54 @@ class Star:
     # Production fields derived from star record internals
     resource: int = 1              # star_record[6]: production rate multiplier
     base_prod: int = 0             # star_record[5]: signed base production bonus
+                                   # also = planet capacity (number of planet slots)
 
-    # Garrison TLV entries (variable count, up to ~12)
-    garrison: List[GarrisonEntry] = field(default_factory=list)
+    # Per-planet data (TLV entries, byte +11 onward)
+    planets: List[Planet] = field(default_factory=list)
 
-    # Production accumulators (int16 at various offsets in the star record)
-    prod_warships: int = 0         # offset +0x51=81
-    prod_transports: int = 0       # offset +0x53=83
-    prod_stealth: int = 0          # offset +0x55=85  StealthShip count
-    prod_stealthships: int = 0     # offset +0x57=87 (also fleet_strength aggregator)
-    prod_population: int = 0       # offset +0x59=89
-    prod_missiles: int = 0         # offset +0x61=97
+    # Ship counts at fixed offsets in the star record.
+    # All ships belong to owner_faction_id.
+    warships:     int = 0    # +0x51 = 81
+    transports:   int = 0    # +0x53 = 83  (unloaded TranSports)
+    stealthships: int = 0    # +0x55 = 85
+    missiles:     int = 0    # +0x61 = 97
 
-    # Stability
-    loyalty: int = 0               # base loyalty (signed; negative = unrest)
-    flags: int = 0                 # bitmask flags byte
+    # Troops delivered by transport fleets, waiting in orbit to invade planets.
+    # Set by fleet_transit on arrival; consumed by manual Invade action.
+    invasion_troops: int = 0
+
+    # Loyalty/stability at the star level
+    loyalty: int = 0
 
     # Raw trailing bytes preserved for round-trip file fidelity
     _raw: bytes = field(default=b'', repr=False)
+
+    # ------------------------------------------------------------------
+    # Computed properties
+    # ------------------------------------------------------------------
+
+    @property
+    def num_planets(self) -> int:
+        """Number of planets in this system."""
+        return len(self.planets)
+
+    @property
+    def troops(self) -> int:
+        """Total enemy troops occupying planets not owned by this star's owner."""
+        return sum(p.troops for p in self.planets
+                   if p.owner_faction_id != self.owner_faction_id)
+
+    @property
+    def troop_faction(self) -> int:
+        """Faction of the first occupying planet (0 if none)."""
+        for p in self.planets:
+            if p.owner_faction_id != self.owner_faction_id and p.troops > 0:
+                return p.owner_faction_id
+        return 0
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
     def owner_name(self, players) -> str:
         if self.owner_faction_id == 0x1A:
@@ -68,14 +100,11 @@ class Star:
                 return p.name
         return f"0x{self.owner_faction_id:02x}"
 
-    def garrison_for_faction(self, faction_id: int) -> List[GarrisonEntry]:
-        return [g for g in self.garrison if g.owner_faction_id == faction_id]
-
-    def total_ships_for_faction(self, faction_id: int) -> int:
-        return sum(g.ship_count for g in self.garrison_for_faction(faction_id))
-
-    def factions_present(self):
-        return list({g.owner_faction_id for g in self.garrison})
+    def total_ships(self) -> int:
+        return self.warships + self.transports + self.stealthships + self.missiles
 
     def __str__(self):
-        return f"Star {self.star_id} ({self.x},{self.y}) type={self.planet_type} owner=0x{self.owner_faction_id:02x}"
+        return (f"Star {self.star_id} ({self.x},{self.y}) "
+                f"type={self.planet_type} owner=0x{self.owner_faction_id:02x} "
+                f"W:{self.warships} T:{self.transports} S:{self.stealthships} M:{self.missiles} "
+                f"planets:{self.num_planets}")

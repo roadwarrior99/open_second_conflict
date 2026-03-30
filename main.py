@@ -232,6 +232,9 @@ def main():
     sys_panel.set_type_change_callback(
         lambda star_idx, pt: None   # state already mutated; map redraws next frame
     )
+    sys_panel.set_ground_combat_callback(
+        lambda star_idx: _open_ground_combat(screen, state, star_idx)
+    )
 
     # Build menus
     menu_bar.setup([
@@ -277,7 +280,7 @@ def main():
     menu_bar.register("Unrest",         lambda: _show_unrest(screen, state))
     menu_bar.register("Statistics",     lambda: _show_stats(screen, state))
     menu_bar.register("Options",        lambda: _show_options(screen, state))
-    menu_bar.register("Planets",        lambda: _show_planets(screen, state))
+    menu_bar.register("Planets",        lambda: _show_planets(screen, state, map_view.selected_star))
     menu_bar.register("Scout Report",   lambda: _show_scout_report(screen, state))
     menu_bar.register("Reinforcements", lambda: _show_reinforcements(screen, state))
     menu_bar.register("Revolt",         lambda: _show_revolt(screen, state))
@@ -436,7 +439,16 @@ def _show_about(screen):
     from second_conflict.ui.dialogs.about_dlg import AboutDialog
     AboutDialog(screen).run()
 
-def _show_planets(screen, state):
+def _show_planets(screen, state, selected_star_idx=None):
+    if not state.stars:
+        return
+    # If a star is selected on the map, jump straight to its planet detail
+    if selected_star_idx is not None and 0 <= selected_star_idx < len(state.stars):
+        star = state.stars[selected_star_idx]
+        from second_conflict.ui.dialogs.planet_detail_dlg import PlanetDetailDialog
+        PlanetDetailDialog(screen, star, state).run()
+        return
+    # Otherwise show the owned-star overview
     current = state.current_player()
     if not current:
         return
@@ -466,6 +478,21 @@ def _show_revolt(screen, state):
 
 
 # ---------------------------------------------------------------------------
+# Ground combat
+# ---------------------------------------------------------------------------
+
+def _open_ground_combat(screen, state, star_idx: int):
+    current = state.current_player()
+    if current is None:
+        return
+    star = state.stars[star_idx]
+    if star.owner_faction_id != current.faction_id:
+        return
+    from second_conflict.ui.dialogs.ground_combat_dlg import GroundCombatDialog
+    GroundCombatDialog(screen, star, current.faction_id, state).run()
+
+
+# ---------------------------------------------------------------------------
 # Fleet dispatch
 # ---------------------------------------------------------------------------
 
@@ -480,7 +507,12 @@ def _open_fleet_dialog(screen, state, star_idx: int):
     if result:
         dispatch_fleet(
             state, star_idx, result['dest_star'],
-            current.faction_id, result['ship_counts'],
+            current.faction_id,
+            warships     = result.get('warships',     0),
+            transports   = result.get('transports',   0),
+            troop_ships  = result.get('troop_ships',  0),
+            stealthships = result.get('stealthships', 0),
+            missiles     = result.get('missiles',     0),
         )
 
 

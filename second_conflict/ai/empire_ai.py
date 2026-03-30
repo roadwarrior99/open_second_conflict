@@ -10,7 +10,7 @@ It owns stars and produces ships, then each turn it:
 The original FUN_1088_0376 loops over the 26 EmpireOrder slots and calls
 the fleet-dispatch routine for non-empty orders.  We replicate that here.
 """
-from second_conflict.model.constants import EMPIRE_FACTION, ShipType
+from second_conflict.model.constants import EMPIRE_FACTION
 from second_conflict.model.game_state import GameState
 from second_conflict.engine.fleet_transit import dispatch_fleet
 from second_conflict.engine.distance import star_distance
@@ -49,7 +49,7 @@ def process(state: GameState):
             continue
         dispatch_fleet(
             state, star_idx, target_idx, EMPIRE_FACTION,
-            {ShipType.WARSHIP: min(order.warships, avail // 2)},
+            warships=min(order.warships, avail // 2),
         )
 
     # Generate new opportunistic attacks for Empire stars with no pending order
@@ -83,11 +83,8 @@ def _generate_opportunistic_attacks(state: GameState):
         # Attack with half the available warships (keep some for defence)
         send = max(1, warships // 2 + rand(warships // 4 + 1))
         dispatch_fleet(
-            state,
-            src_idx,
-            target_idx,
-            EMPIRE_FACTION,
-            {ShipType.WARSHIP: send},
+            state, src_idx, target_idx, EMPIRE_FACTION,
+            warships=send,
         )
 
 
@@ -128,7 +125,5 @@ def _find_target_for_faction(src_idx: int, target_faction: int,
 
 
 def _available_warships(star, faction_id: int) -> int:
-    return sum(
-        g.ship_count for g in star.garrison
-        if g.owner_faction_id == faction_id and g.ship_type == ShipType.WARSHIP
-    )
+    # Ships belong to the star owner; Empire only calls this for its own stars
+    return star.warships if star.owner_faction_id == faction_id else 0

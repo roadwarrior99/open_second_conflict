@@ -6,21 +6,20 @@ from second_conflict.model.constants import FREE_SLOT
 class FleetInTransit:
     """One 21-byte in-transit fleet record (section 3, 400 slots).
 
-    Byte layout confirmed from FUN_1088_0619 (transit processing) and
-    FUN_1028_1a8c (fleet creation):
+    Binary layout (corrected from Ghidra FUN_1088_0619 / combat strings):
       +0   owner_faction_id  (FREE_SLOT=0xFF means empty)
       +1   dest_star
       +2   turns_remaining   (int16 LE, decremented per sim sub-step)
       +4   flag_unknown
       +5   created_flag      (set to 1 on creation)
       +6   warships          (int16)
-      +8   stealthships      (int16)
-      +10  transports        (int16)
+      +8   troop_ships       (int16) — TranSports loaded with troops for invasion
+      +10  stealthships      (int16)
       +12  missiles          (int16)
       +14  scouts            (int16)
-      +16  probes/cargo      (int16)
+      +16  probes            (int16)
       +18  fleet_type_char   ('M'=Missile 2x, 'S'=Scout 1.5x, 'C'=combat, etc.)
-      +19  src_star          (inferred; used for map rendering)
+      +19  src_star          (used for map rendering)
       +20  unknown
     """
     slot: int                   # index 0-399 in the transit array
@@ -31,8 +30,8 @@ class FleetInTransit:
     src_star: int = 0           # source star (byte +19, used for rendering)
 
     warships:     int = 0
-    stealthships: int = 0
-    transports:   int = 0
+    troop_ships:  int = 0   # loaded TranSports (binary offset +8)
+    stealthships: int = 0   # binary offset +10
     missiles:     int = 0
     scouts:       int = 0
     probes:       int = 0
@@ -45,7 +44,7 @@ class FleetInTransit:
         return self.owner_faction_id == FREE_SLOT
 
     def total_ships(self) -> int:
-        return (self.warships + self.stealthships + self.transports +
+        return (self.warships + self.troop_ships + self.stealthships +
                 self.missiles + self.scouts + self.probes)
 
     def __str__(self):

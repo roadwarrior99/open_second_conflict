@@ -3,13 +3,14 @@
 Turn phases (derived from FUN_1088_xxxx call order in SCW.EXE):
   1. Increment turn counter
   2. Process fleet-in-transit movement (all sim_steps sub-steps)
-  3. Resolve all pending combat
-  4. Process production at all stars
+  3. Resolve all pending combat (legacy; most combat now fires on arrival)
+  4. Process production at all stars (ships + troop recruitment)
   5. Process revolt / loyalty changes
   6. Fire random events (if enabled)
-  7. Run Empire AI orders
-  8. Check victory conditions
-  9. Advance to next human player (return True if new human input needed)
+  7. Bombardment of occupied planets by orbital warships
+  8. Run Empire AI orders
+  9. Run computer player AI
+ 10. Check victory conditions
 """
 from second_conflict.model.game_state import GameState
 from second_conflict.model.constants import EMPIRE_FACTION
@@ -25,18 +26,17 @@ def run_turn(state: GameState):
     Returns a list of EventEntry objects generated this turn so the UI can
     display them.
     """
-    # Snapshot the event log size so we can return only this turn's events
     log_start = len(state.event_log)
 
     state.turn += 1
 
-    # Phase 1: move fleets, deliver arrivals
-    fleet_transit.process(state)
+    # Phase 1: move fleets, deliver arrivals (combat fires on arrival)
+    combat_records = fleet_transit.process(state)
 
-    # Phase 2: resolve all combat triggered by arrivals
-    combat_records = combat.resolve_all(state)
+    # Phase 2: resolve any stale pending combat (normally empty)
+    combat_records += combat.resolve_all(state)
 
-    # Phase 3: production at all stars
+    # Phase 3: production at all stars (ships + troop recruitment)
     production.process(state)
 
     # Phase 4: revolt / loyalty
@@ -52,7 +52,7 @@ def run_turn(state: GameState):
     # Phase 7: computer player AI (non-human active players)
     _run_computer_players(state)
 
-    # Phase 8: victory check
+    # Phase 9: victory check
     _check_victory(state)
 
     return state.event_log[log_start:], combat_records
@@ -81,7 +81,7 @@ def _run_computer_players(state: GameState):
 def _check_victory(state: GameState):
     """Determine if the game is over.
 
-    Victory conditions (from SCOREVIEWDLG / FUN_1088_xxxx):
+    Victory conditions (from SCOREVIEWDLG):
       - Only one active player remains → that player wins.
       - All human players eliminated → Empire wins (score screen).
     """
@@ -120,7 +120,6 @@ def _check_victory(state: GameState):
         state.game_over = True
         state.winner_slot = None
     elif not state.human_players():
-        # All human players eliminated — game over even if AI players remain
         state.game_over = True
         state.winner_slot = None
         state.add_event('event', 0, "All human players have been eliminated.")

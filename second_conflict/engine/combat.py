@@ -1,19 +1,25 @@
 """Combat resolution.
 
-Faithful translation of FUN_10b0_2f35 from SCW.EXE.
+Two-phase combat matching the original SCW.EXE:
 
-The original does three attrition rounds between the garrison owner and an
-attacking faction.  Each round:
-  - Attacker losses ≈ rand(5) + defender_warships / 3
-  - Defender losses ≈ rand(5) + garrison_capacity / 20
+  Phase 1 — Orbital battle: arriving warships fight the star's defending warships.
+             Three attrition rounds (FUN_10b0_2f35). If the attacker eliminates
+             the defender, the star changes hands.  Planets stay under their
+             current owners — they must be cleared by manual ground combat.
 
-After combat the winning faction takes ownership if the defender is eliminated.
+  Phase 2 — Ground combat (manual, player-initiated):
+             Bombard: orbital warships kill enemy planet troops each action.
+             Invade:  invasion troops (star.invasion_troops) fight planet by planet.
+
+fleet.troop_ships stores the actual troop count loaded at embarkation.
 """
-from dataclasses import dataclass
-from second_conflict.model.constants import EMPIRE_FACTION, ShipType
-from second_conflict.model.star import Star, GarrisonEntry
+from dataclasses import dataclass, field
+from second_conflict.model.constants import EMPIRE_FACTION
 from second_conflict.model.game_state import GameState
+from second_conflict.model.star import Star
 from second_conflict.util.rng import rand
+
+_BOMBARD_RATE = 2   # troops killed per warship per bombardment action
 
 
 @dataclass
@@ -24,166 +30,196 @@ class CombatRecord:
     star_y: int
     attacker_faction: int
     defender_faction: int
-    atk_initial: int          # attacker warships before combat
-    def_initial: int          # defender warships before combat
-    rounds: list              # list of (atk_hit, def_hit) tuples — 0-3 entries
-    atk_final: int            # attacker warships after combat
-    def_final: int            # defender warships after combat
-    winner_faction: int = -1  # set by _resolve_star after _update_owner
+    atk_initial: int
+    def_initial: int
+    rounds: list = field(default_factory=list)
+    atk_final: int = 0
+    def_final: int = 0
+    winner_faction: int = -1
+    planets_taken: int = 0
 
 
 def resolve_all(state: GameState) -> list:
-    """Resolve all pending combat stars.  Returns list of CombatRecord."""
+    """Resolve any stale pending combat.  Returns list of CombatRecord."""
     records = []
     for star_id in list(state.pending_combats):
         star = state.stars[star_id]
-        records.extend(_resolve_star(star, state))
+        rec = _resolve_star(star, state)
+        if rec:
+            records.append(rec)
     state.pending_combats.clear()
     return records
 
 
-def _resolve_star(star: Star, state: GameState) -> list:
-    """Run one round of inter-faction combat at a star.
+def resolve_arrival(fleet, star: Star, state: GameState):
+    """Resolve orbital combat when an arriving fleet reaches a star.
 
-    We pit every non-owner faction against the current owner sequentially.
-    The owner is the faction with the highest total warship count.
-    Returns list of CombatRecord (one per attacker).
+    Troop ships are NOT auto-landed — the player must manually invoke
+    bombard() and invade() from the Ground Combat dialog.
+    Returns a CombatRecord, or None for friendly arrivals.
     """
-    # Identify defender (highest warship count) and attackers
-    faction_warships = {}
-    for g in star.garrison:
-        if g.ship_type == ShipType.WARSHIP and g.ship_count > 0:
-            faction_warships[g.owner_faction_id] = (
-                faction_warships.get(g.owner_faction_id, 0) + g.ship_count
-            )
+    if fleet.owner_faction_id == star.owner_faction_id:
+        return None
 
-    if not faction_warships:
-        return []
-
-    # The star's current owner is always the defender; everyone else is an attacker.
-    defender_faction = star.owner_faction_id
-    attackers = [f for f in faction_warships if f != defender_faction]
-
-    if not attackers:
-        return []   # only the owner's ships present, no combat
-
-    # If the defender has no warships they can't fight back — skip attrition and
-    # let _update_owner hand the star to whoever arrived.
-    if defender_faction not in faction_warships:
-        _update_owner(star, state)
-        return []
-
-    records = []
-    for attacker_faction in attackers:
-        rec = _attrition(star, defender_faction, attacker_faction, state)
-        _log_combat(star, defender_faction, attacker_faction, rec, state)
-        records.append(rec)
-
-    # Transfer ownership if defender eliminated
-    _update_owner(star, state)
-
-    # Fill in winner now that ownership is settled
-    for rec in records:
-        rec.winner_faction = star.owner_faction_id
-
-    return records
+    return _orbital_combat(fleet, star, state)
 
 
-def _attrition(star: Star, defender_faction: int, attacker_faction: int,
-               state: GameState) -> 'CombatRecord':
-    """Three-round attrition combat matching FUN_10b0_2f35.
+def _resolve_star(star: Star, state: GameState):
+    return None
 
-    Returns a CombatRecord with per-round data (winner_faction filled later).
-    """
-    def_warships = sum(
-        g.ship_count for g in star.garrison
-        if g.owner_faction_id == defender_faction and g.ship_type == ShipType.WARSHIP
-    )
-    atk_warships = sum(
-        g.ship_count for g in star.garrison
-        if g.owner_faction_id == attacker_faction and g.ship_type == ShipType.WARSHIP
-    )
 
-    atk_initial = atk_warships
-    def_initial = def_warships
+# ---------------------------------------------------------------------------
+# Orbital combat
+# ---------------------------------------------------------------------------
+
+def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
+    """Three-round attrition between arriving warships and star's warships."""
+    atk = fleet.warships
+    def_ = star.warships
+    atk_init = atk
+    def_init = def_
+
     rounds = []
-
-    for _ in range(3):   # three attrition rounds
-        if atk_warships < 2 or def_warships < 2:
+    for _ in range(3):
+        if atk <= 0 or def_ <= 0:
             break
-
-        # Attacker casualties from defender fire
-        atk_hit = rand(5) + def_warships // 3
-        atk_hit = min(atk_hit, atk_warships - 1)
-
-        # Defender casualties from attacker fire
-        def_hit = rand(5) + atk_warships // 3
-        def_hit = min(def_hit, def_warships - 1)
-
-        atk_warships = max(0, atk_warships - atk_hit)
-        def_warships = max(0, def_warships - def_hit)
+        atk_hit = rand(5) + def_ // 3
+        atk_hit = min(atk_hit, atk)
+        def_hit = rand(5) + atk // 3
+        def_hit = min(def_hit, def_)
+        atk = max(0, atk - atk_hit)
+        def_ = max(0, def_ - def_hit)
         rounds.append((atk_hit, def_hit))
 
-    atk_losses = sum(r[0] for r in rounds)
-    def_losses = sum(r[1] for r in rounds)
+    fleet.warships = atk
+    star.warships  = def_
 
-    # Apply losses to garrison entries
-    _apply_losses(star, attacker_faction, ShipType.WARSHIP, atk_losses)
-    _apply_losses(star, defender_faction, ShipType.WARSHIP, def_losses)
-
-    return CombatRecord(
+    rec = CombatRecord(
         star_id=star.star_id,
         star_x=star.x,
         star_y=star.y,
-        attacker_faction=attacker_faction,
-        defender_faction=defender_faction,
-        atk_initial=atk_initial,
-        def_initial=def_initial,
+        attacker_faction=fleet.owner_faction_id,
+        defender_faction=star.owner_faction_id,
+        atk_initial=atk_init,
+        def_initial=def_init,
         rounds=rounds,
-        atk_final=atk_warships,
-        def_final=def_warships,
+        atk_final=atk,
+        def_final=def_,
     )
 
+    atk_losses = atk_init - atk
+    def_losses = def_init - def_
+    state.add_event('combat', fleet.owner_faction_id,
+                    f"Combat at star {star.star_id}: attacker lost {atk_losses}, "
+                    f"defender lost {def_losses}")
+    state.add_event('combat', star.owner_faction_id,
+                    f"Combat at star {star.star_id}: attacker lost {atk_losses}, "
+                    f"defender lost {def_losses}")
 
-def _apply_losses(star: Star, faction: int, ship_type: int, losses: int):
-    for g in star.garrison:
-        if g.owner_faction_id == faction and g.ship_type == int(ship_type):
-            g.ship_count = max(0, g.ship_count - losses)
-
-
-def _update_owner(star: Star, state: GameState):
-    """Set star owner to the faction with the highest remaining warship count."""
-    faction_totals = {}
-    for g in star.garrison:
-        if g.ship_count > 0:
-            faction_totals[g.owner_faction_id] = (
-                faction_totals.get(g.owner_faction_id, 0) + g.ship_count
-            )
-
-    # Remove zero-ship entries
-    star.garrison = [g for g in star.garrison if g.ship_count > 0]
-
-    if not faction_totals:
-        star.owner_faction_id = EMPIRE_FACTION
-        return
-
-    new_owner = max(faction_totals, key=faction_totals.get)
-    if new_owner != star.owner_faction_id:
+    if def_ == 0 and atk > 0:
         old_owner = star.owner_faction_id
-        star.owner_faction_id = new_owner
-        state.add_event(
-            'combat',
-            new_owner,
-            f"Star {star.star_id} ({star.x},{star.y}) captured from 0x{old_owner:02x}",
-        )
+        star.owner_faction_id = fleet.owner_faction_id
+        star.loyalty = 0   # reset revolt timer on capture
+        # Surviving attacker warships land at the star
+        star.warships += fleet.warships
+        fleet.warships = 0
+        rec.winner_faction = fleet.owner_faction_id
+        state.add_event('combat', fleet.owner_faction_id,
+                        f"Star {star.star_id} captured from 0x{old_owner:02x}! "
+                        f"Use Ground Combat to clear occupied planets.")
+    elif atk == 0:
+        # Attacker destroyed: defender holds
+        rec.winner_faction = star.owner_faction_id
+    else:
+        # Both sides survived: attacker repelled, remaining ships lost
+        fleet.warships = 0
+        rec.winner_faction = star.owner_faction_id
+
+    return rec
 
 
-def _log_combat(star: Star, defender: int, attacker: int, rec: 'CombatRecord',
-                state: GameState):
-    atk_losses = rec.atk_initial - rec.atk_final
-    def_losses = rec.def_initial - rec.def_final
-    text = (f"Combat at star {star.star_id}: "
-            f"attacker 0x{attacker:02x} lost {atk_losses}, "
-            f"defender 0x{defender:02x} lost {def_losses}")
-    state.add_event('combat', attacker, text)
-    state.add_event('combat', defender, text)
+# ---------------------------------------------------------------------------
+# Ground combat — called manually from GroundCombatDialog
+# ---------------------------------------------------------------------------
+
+def bombard(star: Star, attacker_faction: int, state: GameState) -> dict:
+    """One bombardment round: orbital warships kill enemy planet troops.
+
+    Returns a summary dict: {'firepower': int, 'troops_killed': int, 'planets_freed': list}
+    """
+    firepower = star.warships * _BOMBARD_RATE
+    remaining = firepower
+    killed_total = 0
+    freed = []
+
+    for pi, planet in enumerate(star.planets):
+        if remaining <= 0:
+            break
+        if planet.owner_faction_id == attacker_faction:
+            continue
+        if planet.troops <= 0:
+            continue
+        killed = min(planet.troops, remaining)
+        planet.troops -= killed
+        remaining    -= killed
+        killed_total += killed
+        if planet.troops == 0:
+            planet.owner_faction_id = attacker_faction
+            planet.morale = 1
+            freed.append(pi + 1)
+
+    if freed:
+        state.add_event('combat', attacker_faction,
+                        f"Star {star.star_id}: bombardment freed planet(s) {freed}!")
+    elif killed_total:
+        state.add_event('combat', attacker_faction,
+                        f"Star {star.star_id}: bombardment killed {killed_total} troops.")
+
+    return {'firepower': firepower, 'troops_killed': killed_total, 'planets_freed': freed}
+
+
+def invade(star: Star, attacker_faction: int, state: GameState) -> dict:
+    """Use star.invasion_troops to assault enemy-occupied planets.
+
+    Attacks planets one by one until troops run out or all cleared.
+    Returns a summary dict: {'troops_used': int, 'troops_remaining': int, 'planets_taken': int}
+    """
+    attacking = star.invasion_troops
+    initial   = attacking
+    taken     = 0
+
+    for planet in star.planets:
+        if attacking <= 0:
+            break
+        if planet.owner_faction_id == attacker_faction:
+            continue
+        if planet.troops <= 0:
+            # Unoccupied — take it for free
+            planet.owner_faction_id = attacker_faction
+            taken += 1
+            continue
+
+        effective = max(1, int(planet.troops * (planet.morale / 5 + 0.5)))
+
+        if attacking > effective:
+            attacking -= effective
+            old_owner = planet.owner_faction_id
+            planet.owner_faction_id = attacker_faction
+            planet.troops = 0
+            planet.morale = 1
+            taken += 1
+            state.add_event('combat', attacker_faction,
+                            f"Star {star.star_id} planet taken from 0x{old_owner:02x}!")
+        else:
+            planet.troops = max(0, planet.troops - attacking // 2)
+            state.add_event('combat', star.owner_faction_id,
+                            f"Star {star.star_id}: invasion repelled! "
+                            f"{planet.troops} troops remain.")
+            attacking = 0
+
+    star.invasion_troops = attacking
+    return {
+        'troops_used':      initial - attacking,
+        'troops_remaining': attacking,
+        'planets_taken':    taken,
+    }

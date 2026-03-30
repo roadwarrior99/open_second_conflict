@@ -6,9 +6,8 @@ Faithful translation of FUN_1088_07a7 from SCW.EXE.
 when random_events is enabled.  Each event is gated by a difficulty-
 scaled probability check.
 """
-from second_conflict.model.constants import EMPIRE_FACTION, ShipType
+from second_conflict.model.constants import EMPIRE_FACTION
 from second_conflict.model.game_state import GameState
-from second_conflict.model.star import GarrisonEntry
 from second_conflict.util.rng import rand
 
 
@@ -20,8 +19,7 @@ def process(state: GameState):
 
 
 def _threshold(difficulty: int) -> int:
-    """Probability (0-99) that an event fires for a player this turn."""
-    return 20 + difficulty * 10   # 20% at diff 0, 50% at diff 3
+    return 20 + difficulty * 10
 
 
 def _fire_event(event_type: int, player, state: GameState):
@@ -31,31 +29,22 @@ def _fire_event(event_type: int, player, state: GameState):
 
     if event_type == 1:
         _imperial_missile_strike(player, my_stars, state)
-
     elif event_type == 2:
         _independence_movement(player, my_stars, state)
-
     elif event_type == 3:
         _tech_breakthrough(player, my_stars, state)
-
     elif event_type == 4:
         _muon_cloud(player, state)
-
     elif event_type == 5:
         _reinforcements(player, my_stars, state)
-
     elif event_type == 6:
         _espionage(player, state)
-
     elif event_type == 7:
         _pirate_raid(player, my_stars, state)
-
     elif event_type == 8:
         _diplomatic_overture(player, state)
-
     elif event_type == 9:
         _resource_discovery(player, my_stars, state)
-
     elif event_type == 10:
         _plague(player, my_stars, state)
 
@@ -65,29 +54,22 @@ def _fire_event(event_type: int, player, state: GameState):
 # ---------------------------------------------------------------------------
 
 def _imperial_missile_strike(player, my_stars, state: GameState):
-    """Case 1: The Empire launches a missile strike at a random player star."""
     star = my_stars[rand(len(my_stars))]
     losses = rand(5) + 3
-    for g in star.garrison:
-        if g.owner_faction_id == player.faction_id and g.ship_type == ShipType.WARSHIP:
-            g.ship_count = max(0, g.ship_count - losses)
+    star.warships = max(0, star.warships - losses)
     state.add_event('event', player.faction_id,
                     f"Imperial missile strike destroys {losses} WarShips at star {star.star_id}!")
 
 
 def _independence_movement(player, my_stars, state: GameState):
-    """Case 2: A garrison unit defects (independence movement)."""
     star = my_stars[rand(len(my_stars))]
-    if star.garrison:
-        g = star.garrison[rand(len(star.garrison))]
-        defectors = max(1, g.ship_count // 4)
-        g.ship_count = max(0, g.ship_count - defectors)
-        state.add_event('revolt', player.faction_id,
-                        f"Independence movement: {defectors} ships leave star {star.star_id}.")
+    defectors = max(1, star.warships // 4)
+    star.warships = max(0, star.warships - defectors)
+    state.add_event('revolt', player.faction_id,
+                    f"Independence movement: {defectors} WarShips lost at star {star.star_id}.")
 
 
 def _tech_breakthrough(player, my_stars, state: GameState):
-    """Case 3: Technology breakthrough — 50% production boost or new factory."""
     star = my_stars[rand(len(my_stars))]
     if rand(2) == 0:
         star.resource = min(star.resource + 1, 15)
@@ -98,24 +80,21 @@ def _tech_breakthrough(player, my_stars, state: GameState):
         if star.planet_type == PlanetType.NEUTRAL:
             star.planet_type = PlanetType.FACTORY
         state.add_event('event', player.faction_id,
-                        f"Tech breakthrough! New factory established at star {star.star_id}.")
+                        f"Tech breakthrough! New factory at star {star.star_id}.")
 
 
 def _muon_cloud(player, state: GameState):
-    """Case 4: Muon cloud hits a random in-transit fleet."""
     active = [f for f in state.fleets_in_transit
               if f.owner_faction_id == player.faction_id]
     if not active:
         return
     fleet = active[rand(len(active))]
     if rand(2) == 0:
-        # Course change: redirect to random star
         new_dest = rand(len(state.stars))
         fleet.dest_star = new_dest
         state.add_event('event', player.faction_id,
                         f"Muon cloud diverts fleet to star {new_dest}!")
     else:
-        # Damage: lose some warships
         losses = rand(fleet.warships + 1)
         fleet.warships = max(0, fleet.warships - losses)
         state.add_event('event', player.faction_id,
@@ -123,29 +102,14 @@ def _muon_cloud(player, state: GameState):
 
 
 def _reinforcements(player, my_stars, state: GameState):
-    """Case 5: Bonus reinforcement ships appear at a random star."""
     star = my_stars[rand(len(my_stars))]
     count = rand(5) + 2
-    from second_conflict.model.star import GarrisonEntry
-    existing = next(
-        (g for g in star.garrison
-         if g.owner_faction_id == player.faction_id and g.ship_type == ShipType.WARSHIP),
-        None
-    )
-    if existing:
-        existing.ship_count += count
-    else:
-        star.garrison.append(GarrisonEntry(
-            owner_faction_id=player.faction_id,
-            ship_type=int(ShipType.WARSHIP),
-            ship_count=count,
-        ))
+    star.warships += count
     state.add_event('reinforce', player.faction_id,
                     f"Reinforcements: {count} WarShips arrive at star {star.star_id}.")
 
 
 def _espionage(player, state: GameState):
-    """Case 6: Espionage — reveal an enemy fleet position."""
     enemy_fleets = [f for f in state.fleets_in_transit
                     if f.owner_faction_id != player.faction_id
                     and f.owner_faction_id != EMPIRE_FACTION
@@ -159,7 +123,6 @@ def _espionage(player, state: GameState):
 
 
 def _pirate_raid(player, my_stars, state: GameState):
-    """Case 7: Pirates raid a star, stealing credits."""
     star = my_stars[rand(len(my_stars))]
     stolen = rand(50) + 10
     player.credits = max(0, player.credits - stolen)
@@ -168,7 +131,6 @@ def _pirate_raid(player, my_stars, state: GameState):
 
 
 def _diplomatic_overture(player, state: GameState):
-    """Case 8: Diplomatic overture from another player."""
     others = [p for p in state.active_players() if p.faction_id != player.faction_id
               and p.faction_id != EMPIRE_FACTION]
     if not others:
@@ -181,30 +143,26 @@ def _diplomatic_overture(player, state: GameState):
 
 
 def _resource_discovery(player, my_stars, state: GameState):
-    """Case 9: Resource discovery increases a star's production."""
     star = my_stars[rand(len(my_stars))]
     star.resource = min(star.resource + 1, 15)
     state.add_event('event', player.faction_id,
-                    f"Resource deposits discovered at star {star.star_id}! "
+                    f"Resource deposits at star {star.star_id}! "
                     f"Production increased to {star.resource}.")
 
 
 def _plague(player, my_stars, state: GameState):
-    """Case 10: Plague reduces population or garrison."""
     star = my_stars[rand(len(my_stars))]
-    if star.garrison:
-        g = star.garrison[rand(len(star.garrison))]
-        losses = max(1, g.ship_count // 5)
-        g.ship_count = max(0, g.ship_count - losses)
+    if star.planets:
+        planet = star.planets[rand(len(star.planets))]
+        losses = max(1, planet.troops // 5)
+        planet.troops = max(0, planet.troops - losses)
         state.add_event('event', player.faction_id,
-                        f"Plague at star {star.star_id}! {losses} garrison lost.")
+                        f"Plague at star {star.star_id}! {losses} troops lost.")
 
 
-# Helper to get active players who actually own stars
 def active_players_with_stars(state: GameState):
     return [p for p in state.active_players()
             if state.stars_owned_by(p.faction_id)]
 
 
-# Monkey-patch onto GameState for convenience
 GameState.active_players = lambda self: [p for p in self.players if p.is_active]

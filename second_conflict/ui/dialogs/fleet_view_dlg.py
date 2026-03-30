@@ -1,17 +1,18 @@
 """Fleet view dialog — translation of FLEETVIEWDLG from SCW.EXE.
 
 Shows a scrollable list of all your active in-transit fleets.
-Columns: Slot#, Dest, Turns, W, SS, T, M, S, P, Type
+Columns: Slot#, Dest, Turns, War, Troop, Stlth, Msle, Scout, Probe, Type
+  Troop = troops embarked on this fleet's TranSports (not transport count).
 Selecting an entry and clicking OK jumps the map to that fleet's destination.
 Returns the selected dest_star index or None.
 """
 import pygame
 from second_conflict.ui.dialogs.base_dialog import BaseDialog, TEXT_COL, TITLE_COL
-from second_conflict.model.constants import FREE_SLOT, SHIP_NAMES, ShipType
+from second_conflict.model.constants import FREE_SLOT
 from second_conflict.model.game_state import GameState
 
 _ROW_H = 18
-_HDR_COLS = ["Slot", "Dest", "Turns", "War", "Stlth", "Trnsp", "Msle", "Scout", "Probe", "Type"]
+_HDR_COLS = ["Slot", "Dest", "Turns", "War", "Troop", "Stlth", "Msle", "Scout", "Probe", "Type"]
 _COL_XS   = [0,     40,     80,      130,   170,     215,     260,    300,     345,     390]
 
 
@@ -106,8 +107,8 @@ class FleetViewDialog(BaseDialog):
                     dest_name,
                     str(fleet.turns_remaining),
                     str(fleet.warships),
+                    str(fleet.troop_ships),
                     str(fleet.stealthships),
-                    str(fleet.transports),
                     str(fleet.missiles),
                     str(fleet.scouts),
                     str(fleet.probes),
@@ -129,7 +130,7 @@ class FleetViewDialog(BaseDialog):
 
         # Totals summary line
         total_w = sum(f.warships    for _, f in self._fleets)
-        total_t = sum(f.transports  for _, f in self._fleets)
+        total_t = sum(f.troop_ships for _, f in self._fleets)
         total_s = sum(f.scouts      for _, f in self._fleets)
         totals = self._text(
             f"Totals — W:{total_w}  T:{total_t}  S:{total_s}",

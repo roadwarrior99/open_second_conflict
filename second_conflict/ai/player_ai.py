@@ -12,7 +12,7 @@ Strategy (inferred from decompilation patterns):
 This is a heuristic AI — the original used a scored priority table per star
 that we approximate here.
 """
-from second_conflict.model.constants import EMPIRE_FACTION, ShipType
+from second_conflict.model.constants import EMPIRE_FACTION
 from second_conflict.model.game_state import GameState
 from second_conflict.engine.fleet_transit import dispatch_fleet
 from second_conflict.engine.distance import star_distance
@@ -50,19 +50,13 @@ def process(player, state: GameState):
 
         send = available - _MIN_GARRISON
         if target.owner_faction_id == EMPIRE_FACTION:
-            # Expand into empty/Empire territory more aggressively
             if send >= 1:
-                dispatch_fleet(
-                    state, src_idx, target_idx, player.faction_id,
-                    {ShipType.WARSHIP: send},
-                )
+                dispatch_fleet(state, src_idx, target_idx, player.faction_id,
+                               warships=send)
         else:
-            # Only attack a player star if we have a numerical advantage
             if send >= target_ships * _ATTACK_RATIO and send >= 4:
-                dispatch_fleet(
-                    state, src_idx, target_idx, player.faction_id,
-                    {ShipType.WARSHIP: send},
-                )
+                dispatch_fleet(state, src_idx, target_idx, player.faction_id,
+                               warships=send)
 
 
 def _pick_target(src_idx: int, faction_id: int, state: GameState) -> int | None:
@@ -91,17 +85,11 @@ def _pick_target(src_idx: int, faction_id: int, state: GameState) -> int | None:
 
 
 def _available_warships(star, faction_id: int) -> int:
-    return sum(
-        g.ship_count for g in star.garrison
-        if g.owner_faction_id == faction_id and g.ship_type == ShipType.WARSHIP
-    )
+    return star.warships if star.owner_faction_id == faction_id else 0
 
 
 def _total_warships_at(star) -> int:
-    return sum(
-        g.ship_count for g in star.garrison
-        if g.ship_type == ShipType.WARSHIP
-    )
+    return star.warships
 
 
 def _has_outgoing_fleet(src_idx: int, faction_id: int, state: GameState) -> bool:

@@ -12,6 +12,7 @@ Handles:
 """
 import math
 import pygame
+
 from second_conflict.model.constants import (
     PLAYER_COLOURS, EMPIRE_COLOUR, NEUTRAL_COLOUR, EMPIRE_FACTION, FREE_SLOT,
 )
@@ -21,7 +22,10 @@ STAR_RADIUS   = 10
 SELECT_RADIUS = 14
 FONT_SIZE     = 11
 MAP_MARGIN    = 40      # pixels of padding around the star field
-_SPRITE_SIZE  = 30     # star sprite display size (pixels)
+
+_SPRITE_SIZE   = 22   # central star body (px)
+_PLANET_RADIUS =  3   # each orbiting planet dot (px)
+_ORBIT_RADIUS  = 14   # distance of dots from star centre (px)
 
 
 class MapView:
@@ -31,7 +35,8 @@ class MapView:
         self._font   = None
         self._selected_star: int | None = None
         self._on_star_click = None   # callback(star_idx, second_click)
-        self._star_sprites: dict = {}   # colour tuple → pygame.Surface
+        self._star_sprites: dict = {}   # (colour, size) → pygame.Surface
+        self._base_sprite = None        # unscaled source bitmap
         self._sprites_loaded = False
         self._bounds: tuple[int, int] = self._coord_bounds()
 
@@ -98,24 +103,43 @@ class MapView:
         for i, star in enumerate(self.state.stars):
             pos = self._star_pos(star)
             colour = self._faction_colour(star.owner_faction_id)
+            half = _SPRITE_SIZE // 2
 
             # Selection ring
             if i == self._selected_star:
-                pygame.draw.circle(surface, (255, 255, 100), pos, SELECT_RADIUS, 2)
+                pygame.draw.circle(surface, (255, 255, 100), pos,
+                                   half + _ORBIT_RADIUS + _PLANET_RADIUS + 3, 2)
 
-            sprite = self._star_sprites.get(colour)
+            # Central star body
+            sprite = self._get_sprite(colour, _SPRITE_SIZE)
             if sprite:
-                half = _SPRITE_SIZE // 2
                 surface.blit(sprite, (pos[0] - half, pos[1] - half))
             else:
-                pygame.draw.circle(surface, colour, pos, STAR_RADIUS)
-                pygame.draw.circle(surface, (200, 200, 200), pos, STAR_RADIUS, 1)
+                pygame.draw.circle(surface, colour, pos, half)
+                pygame.draw.circle(surface, (200, 200, 200), pos, half, 1)
+
+            # Occupation indicator — red dashed ring if troops present
+            if getattr(star, 'troops', 0) > 0:
+                pygame.draw.circle(surface, (220, 50, 50), pos,
+                                   half + _ORBIT_RADIUS + _PLANET_RADIUS + 5, 2)
+
+            # Orbiting planet dots
+            num_planets = star.num_planets
+            if num_planets:
+                planet_col = tuple(min(255, int(c * 0.7)) for c in colour)
+                for p in range(num_planets):
+                    angle = (2 * math.pi * p / num_planets) - math.pi / 2
+                    dx = int(_ORBIT_RADIUS * math.cos(angle))
+                    dy = int(_ORBIT_RADIUS * math.sin(angle))
+                    pygame.draw.circle(surface, planet_col,
+                                       (pos[0] + dx, pos[1] + dy), _PLANET_RADIUS)
 
             # Label: id + planet type char
             label = self._font.render(
                 f"{star.star_id}{star.planet_type}", True, (220, 220, 220)
             )
-            surface.blit(label, (pos[0] + STAR_RADIUS + 2, pos[1] - FONT_SIZE // 2))
+            label_x = pos[0] + half + _ORBIT_RADIUS + 2
+            surface.blit(label, (label_x, pos[1] - FONT_SIZE // 2))
 
         surface.set_clip(None)
 
@@ -124,20 +148,19 @@ class MapView:
     # ------------------------------------------------------------------
 
     def _load_sprites(self):
+        """Load and cache tinted star sprites for every faction colour."""
         self._sprites_loaded = True
         try:
             from second_conflict.assets import get_star_sprite
-            colours = set()
-            colours.add(EMPIRE_COLOUR)
-            colours.add(NEUTRAL_COLOUR)
-            for c in PLAYER_COLOURS:
-                colours.add(c)
-            for colour in colours:
+            for colour in ([EMPIRE_COLOUR, NEUTRAL_COLOUR] + list(PLAYER_COLOURS)):
                 surf = get_star_sprite(colour, _SPRITE_SIZE)
                 if surf:
                     self._star_sprites[colour] = surf
         except Exception:
             pass
+
+    def _get_sprite(self, colour: tuple, size: int):
+        return self._star_sprites.get(colour)
 
     def _coord_bounds(self) -> tuple[int, int]:
         """Return (max_x, max_y) across all stars, used for scaling."""

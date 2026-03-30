@@ -7,9 +7,7 @@ Column tab-stops from original: 50 | 80 | 110 | 140 | 175 | 200
 """
 import pygame
 from second_conflict.ui.dialogs.base_dialog import BaseDialog, TITLE_COL, TEXT_COL
-from second_conflict.model.constants import (
-    SHIP_NAMES, ShipType, PLAYER_COLOURS, EMPIRE_FACTION,
-)
+from second_conflict.model.constants import PLAYER_COLOURS, EMPIRE_FACTION
 from second_conflict.model.game_state import GameState
 
 _ROW_H   = 18
@@ -17,8 +15,8 @@ _HDR_COL = (160, 160, 210)
 _SEL_COL = (50, 70, 120)
 _ALT_COL = (18, 22, 36)
 
-# Column x-offsets (matching original tab-stops scaled to our dialog width)
-_COLS = [0, 50, 90, 130, 165, 210, 260]   # left edges; last entry = right bound
+# Column x-offsets
+_COLS = [0, 50, 145, 195, 245, 305, 370, 435]   # Star | Coords | Type | Res | Planets | WarShips | Stealth | Troops
 
 
 class AdminViewDialog(BaseDialog):
@@ -26,7 +24,7 @@ class AdminViewDialog(BaseDialog):
 
     def __init__(self, screen: pygame.Surface, state: GameState,
                  player_faction: int):
-        super().__init__(screen, "Planet Administration", width=500, height=420)
+        super().__init__(screen, "Planet Administration", width=660, height=420)
         self.state          = state
         self.player_faction = player_faction
 
@@ -44,14 +42,10 @@ class AdminViewDialog(BaseDialog):
         for star in self.state.stars:
             if star.owner_faction_id != self.player_faction:
                 continue
-            ws = sum(g.ship_count for g in star.garrison
-                     if g.owner_faction_id == self.player_faction
-                     and g.ship_type == int(ShipType.WARSHIP))
-            ss = sum(g.ship_count for g in star.garrison
-                     if g.owner_faction_id == self.player_faction
-                     and g.ship_type == int(ShipType.STEALTHSHIP))
             rows.append((star.star_id, star.x, star.y,
-                         star.planet_type, star.resource, ws, ss, star))
+                         star.planet_type, star.resource, star.num_planets,
+                         star.warships, star.stealthships,
+                         star.troops, star))
         rows.sort(key=lambda r: r[0])
         return rows
 
@@ -73,7 +67,11 @@ class AdminViewDialog(BaseDialog):
             for i, _ in enumerate(self._rows[self._scroll:self._scroll + self._visible()]):
                 r = pygame.Rect(cr.x, row_y + i * _ROW_H, cr.width, _ROW_H)
                 if r.collidepoint(event.pos):
-                    self._selected = self._scroll + i
+                    new_sel = self._scroll + i
+                    if new_sel == self._selected:
+                        self._open_planet_detail()
+                    else:
+                        self._selected = new_sel
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_UP:
@@ -89,6 +87,8 @@ class AdminViewDialog(BaseDialog):
                 self._selected = min(len(self._rows) - 1,
                                      self._selected + self._visible())
                 self._clamp_scroll()
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                self._open_planet_detail()
 
         if event.type == pygame.MOUSEWHEEL:
             self._scroll = max(0, min(
@@ -107,6 +107,13 @@ class AdminViewDialog(BaseDialog):
         elif self._selected >= self._scroll + vis:
             self._scroll = self._selected - vis + 1
 
+    def _open_planet_detail(self):
+        if not self._rows or self._selected >= len(self._rows):
+            return
+        star = self._rows[self._selected][-1]   # last element is the Star object
+        from second_conflict.ui.dialogs.planet_detail_dlg import PlanetDetailDialog
+        PlanetDetailDialog(self.screen, star, self.state).run()
+
     # ------------------------------------------------------------------
 
     def draw(self, surface: pygame.Surface):
@@ -115,15 +122,15 @@ class AdminViewDialog(BaseDialog):
         x, y = cr.x, cr.y
 
         # Summary line
-        total_ws = sum(r[5] for r in self._rows)
-        total_ss = sum(r[6] for r in self._rows)
+        total_ws = sum(r[6] for r in self._rows)
+        total_ss = sum(r[7] for r in self._rows)
         summary = (f"{len(self._rows)} stars   "
                    f"WarShips: {total_ws}   StealthShips: {total_ss}")
         surface.blit(self._text(summary, TITLE_COL), (x, y))
         y += _ROW_H + 4
 
         # Header
-        headers = ["Star", "Coords", "Type", "Res", "WarShip", "Stealth"]
+        headers = ["Star", "Coords", "Type", "Res", "Planets", "WarShips", "Stealth", "Troops"]
         for i, h in enumerate(headers):
             surface.blit(self._text(h, _HDR_COL),
                          (x + _COLS[i], y))
@@ -132,7 +139,7 @@ class AdminViewDialog(BaseDialog):
         # Rows
         vis = self._visible()
         for ri, row in enumerate(self._rows[self._scroll:self._scroll + vis]):
-            star_id, sx, sy, ptype, res, ws, ss, star = row
+            star_id, sx, sy, ptype, res, num_planets, ws, ss, troops, star = row
             abs_i = self._scroll + ri
             row_rect = pygame.Rect(cr.x, y, cr.width, _ROW_H)
 
@@ -141,12 +148,15 @@ class AdminViewDialog(BaseDialog):
             elif ri % 2 == 1:
                 pygame.draw.rect(surface, _ALT_COL, row_rect)
 
+            troops_str = str(troops) if troops > 0 else "—"
             cols = [str(star_id), f"({sx},{sy})", ptype,
-                    str(res), str(ws), str(ss)]
+                    str(res), str(num_planets), str(ws), str(ss), troops_str]
             for ci, txt in enumerate(cols):
                 color = TEXT_COL
-                if ci == 4 and ws == 0:
+                if ci == 5 and ws == 0:
                     color = (180, 80, 80)   # no warships — highlight
+                if ci == 7 and troops > 0:
+                    color = (220, 140, 40)  # occupied — highlight orange
                 surface.blit(self._text(txt, color), (x + _COLS[ci], y))
             y += _ROW_H
 

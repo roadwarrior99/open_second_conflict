@@ -20,7 +20,7 @@ Faithfully translated from:
 import pygame
 from second_conflict.model.constants import (
     PLAYER_COLOURS, EMPIRE_COLOUR, NEUTRAL_COLOUR, EMPIRE_FACTION,
-    SHIP_NAMES, PlanetType,
+    PlanetType,
 )
 from second_conflict.model.game_state import GameState
 
@@ -89,9 +89,12 @@ class SysInfoPanel:
         self.rect  = rect
         self.state = state
         self._font = None
-        self._btn_rects: list[pygame.Rect] = []   # 8 button rects
+        self._btn_rects: list[pygame.Rect] = []   # 8 production-type button rects
         self._hover_btn: int | None = None
         self._on_type_change = None   # callback(star_idx, new_planet_type)
+        self._on_ground_combat = None  # callback(star_idx) → opens GroundCombatDialog
+        self._gc_btn_rect: pygame.Rect | None = None
+        self._hover_gc = False
 
     def set_state(self, state: GameState):
         self.state = state
@@ -99,6 +102,10 @@ class SysInfoPanel:
     def set_type_change_callback(self, cb):
         """cb(star_idx: int, new_planet_type: str) → None"""
         self._on_type_change = cb
+
+    def set_ground_combat_callback(self, cb):
+        """cb(star_idx: int) → None  — opens Ground Combat dialog for that star."""
+        self._on_ground_combat = cb
 
     # ------------------------------------------------------------------
     # Event handling
@@ -122,6 +129,8 @@ class SysInfoPanel:
 
         if event.type == pygame.MOUSEMOTION:
             self._hover_btn = None
+            self._hover_gc  = (self._gc_btn_rect is not None and
+                               self._gc_btn_rect.collidepoint(event.pos))
             if self.rect.collidepoint(event.pos):
                 for i, r in enumerate(self._btn_rects):
                     if r.collidepoint(event.pos):
@@ -132,6 +141,10 @@ class SysInfoPanel:
                         break
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._gc_btn_rect and self._gc_btn_rect.collidepoint(event.pos):
+                if self._on_ground_combat:
+                    self._on_ground_combat(selected_star_idx)
+                return
             for i, r in enumerate(self._btn_rects):
                 if r.collidepoint(event.pos):
                     pt = _PROD_TYPES[i]
@@ -167,7 +180,7 @@ class SysInfoPanel:
                   star.owner_faction_id == current_player.faction_id)
 
         self._draw_star_info(surface, star, is_own)
-        self._draw_garrison(surface, star)
+        self._draw_garrison(surface, star, is_own)
 
         # Tooltip — drawn last so it renders on top of everything
         if self._hover_btn is not None and self._hover_btn < len(self._btn_rects):
@@ -238,38 +251,64 @@ class SysInfoPanel:
                                 by  + (_BTN_H - lbl.get_height()) // 2))
             bx += _BTN_W + _BTN_GAP
 
-        # Tooltip hint
+        self._gc_btn_rect = None   # reset; set in _draw_garrison
         if is_own:
             hint = self._font.render("Click to select production type", True, _LABEL)
             surface.blit(hint, (bx + 8, by + (_BTN_H - hint.get_height()) // 2))
 
-    def _draw_garrison(self, surface: pygame.Surface, star):
-        """Right-hand section: garrison breakdown (PLTLINEWNDPROC)."""
+    def _draw_garrison(self, surface: pygame.Surface, star, is_own: bool = False):
+        """Right-hand section: ship and planet summary (PLTLINEWNDPROC)."""
         rx = self.rect.centerx + 8
         y  = self.rect.y + 5
 
-        valid = [(g.owner_faction_id, g.ship_type, g.ship_count)
-                 for g in star.garrison if g.ship_count > 0]
+        # Ship counts
+        ships = [
+            ("WarShips",    star.warships),
+            ("TranSports",  star.transports),
+            ("StealthShps", star.stealthships),
+            ("Missiles",    star.missiles),
+        ]
+        has_ships = any(c > 0 for _, c in ships)
+        if not has_ships:
+            surface.blit(self._font.render("No ships", True, _LABEL), (rx, y))
+            y += _FONT_SIZE + 3
+        else:
+            for name, count in ships:
+                if count > 0:
+                    line = f"{name:<12} ×{count}"
+                    surface.blit(self._font.render(line, True, _VALUE), (rx, y))
+                    y += _FONT_SIZE + 3
 
-        if not valid:
-            surface.blit(self._font.render("No garrison", True, _LABEL), (rx, y))
-            return
-
-        # Show up to 4 rows to fit the panel height
-        for owner_id, ship_type, count in valid[:4]:
-            p = self.state.player_for_faction(owner_id)
-            fname = (
-                "Empire" if owner_id == EMPIRE_FACTION
-                else (p.name[:6] if p else f"?{owner_id:02x}")
-            )
-            sname = SHIP_NAMES.get(ship_type, f"T{ship_type}")
-            line  = f"{fname:<7} {sname:<12} ×{count}"
-            surface.blit(self._font.render(line, True, _VALUE), (rx, y))
+        # Invasion troops in orbit
+        if star.invasion_troops > 0:
+            line = f"{'Inv.Troops':<12} ×{star.invasion_troops}"
+            surface.blit(self._font.render(line, True, (180, 220, 255)), (rx, y))
             y += _FONT_SIZE + 3
 
-        if len(valid) > 4:
-            more = self._font.render(f"  +{len(valid)-4} more…", True, _LABEL)
-            surface.blit(more, (rx, y))
+        # Troop/planet summary
+        occupied = [(pi + 1, p.troops) for pi, p in enumerate(star.planets)
+                    if p.owner_faction_id != star.owner_faction_id and p.troops > 0]
+        if occupied:
+            occ_str = f"Occupied: {len(occupied)} planet(s)"
+            surface.blit(self._font.render(occ_str, True, (220, 140, 40)), (rx, y))
+            y += _FONT_SIZE + 3
+
+        # Ground Combat button — placed here so it renders after (on top of) ship text
+        needs_gc = is_own and (star.troops > 0 or star.invasion_troops > 0)
+        if needs_gc:
+            gc_label = (
+                f"Ground Combat ({star.invasion_troops} troops)"
+                if star.invasion_troops > 0
+                else "Ground Combat"
+            )
+            gc_w = 8 * len(gc_label) + 16
+            gc_rect = pygame.Rect(rx, y, gc_w, _BTN_H)
+            bg = _BTN_HOV if self._hover_gc else (90, 50, 30)
+            pygame.draw.rect(surface, bg, gc_rect, border_radius=3)
+            pygame.draw.rect(surface, (160, 100, 60), gc_rect, 1, border_radius=3)
+            lbl = self._font.render(gc_label, True, (255, 200, 120))
+            surface.blit(lbl, (gc_rect.x + 6, gc_rect.y + (_BTN_H - lbl.get_height()) // 2))
+            self._gc_btn_rect = gc_rect
 
     def _draw_tooltip(self, surface: pygame.Surface,
                       anchor: pygame.Rect, planet_type: str):

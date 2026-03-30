@@ -5,7 +5,7 @@ current player's stars, showing ship counts and turns remaining.
 """
 import pygame
 from second_conflict.ui.dialogs.base_dialog import BaseDialog, TITLE_COL, TEXT_COL
-from second_conflict.model.constants import SHIP_NAMES, FREE_SLOT
+from second_conflict.model.constants import FREE_SLOT
 from second_conflict.model.game_state import GameState
 
 _ROW_H   = 18
@@ -46,13 +46,17 @@ class ReinfViewDialog(BaseDialog):
 
             # Summarise ship counts
             ship_parts = []
-            for attr, ship_type in [
-                ('warships',     1), ('stealthships', 2), ('transports', 3),
-                ('missiles',     4), ('scouts',        5), ('probes',    7),
+            for attr, label in [
+                ('warships',    'WarShip'),
+                ('troop_ships', 'TroopShip'),
+                ('stealthships','StealthShip'),
+                ('missiles',    'Missile'),
+                ('scouts',      'Scout'),
+                ('probes',      'Probe'),
             ]:
                 count = getattr(fleet, attr, 0) or 0
                 if count > 0:
-                    ship_parts.append(f"{SHIP_NAMES.get(ship_type, str(ship_type))}×{count}")
+                    ship_parts.append(f"{label}×{count}")
 
             ships_str = ', '.join(ship_parts) if ship_parts else '—'
             fleet_type = getattr(fleet, 'fleet_type', '?')

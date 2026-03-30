@@ -72,22 +72,17 @@ class UnrestDialog(BaseDialog):
 def _build_rows(state: GameState, player_faction: int) -> list[dict]:
     rows = []
     for star in state.stars:
-        factions = {g.owner_faction_id for g in star.garrison if g.ship_count > 0}
-        if player_faction not in factions:
+        if star.owner_faction_id != player_faction:
             continue
-        # Find this player's garrison entry
-        player_g = [g for g in star.garrison
-                    if g.owner_faction_id == player_faction and g.ship_count > 0]
-        if not player_g:
-            continue
-        loyalty = min(g.loyalty for g in player_g)
+        loyalty = star.loyalty
         if loyalty >= 0:
             continue  # no stress
+        # Count foreign-owned troops on this star's planets
         foreign = sum(
-            g.ship_count for g in star.garrison
-            if g.owner_faction_id != player_faction
-            and g.owner_faction_id != EMPIRE_FACTION
-            and g.ship_count > 0
+            p.troops for p in star.planets
+            if p.owner_faction_id != player_faction
+            and p.owner_faction_id != EMPIRE_FACTION
+            and p.troops > 0
         )
         rows.append({
             'star_id':  star.star_id,

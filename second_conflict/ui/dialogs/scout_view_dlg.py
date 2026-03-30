@@ -6,9 +6,7 @@ have no fog-of-war, all non-owned stars are shown.
 """
 import pygame
 from second_conflict.ui.dialogs.base_dialog import BaseDialog, TITLE_COL, TEXT_COL
-from second_conflict.model.constants import (
-    ShipType, EMPIRE_FACTION, PLAYER_COLOURS,
-)
+from second_conflict.model.constants import EMPIRE_FACTION, PLAYER_COLOURS
 from second_conflict.model.game_state import GameState
 
 _ROW_H   = 18
@@ -16,7 +14,7 @@ _HDR_COL = (160, 160, 210)
 _SEL_COL = (50, 70, 120)
 _ALT_COL = (18, 22, 36)
 
-_COLS = [0, 45, 100, 155, 215, 275]
+_COLS = [0, 50, 145, 230, 290, 380]   # Star | Coords | Owner | Type | WarShips | Total
 
 
 class ScoutViewDialog(BaseDialog):
@@ -24,7 +22,7 @@ class ScoutViewDialog(BaseDialog):
 
     def __init__(self, screen: pygame.Surface, state: GameState,
                  player_faction: int):
-        super().__init__(screen, "Scout Report", width=480, height=400)
+        super().__init__(screen, "Scout Report", width=600, height=400)
         self.state          = state
         self.player_faction = player_faction
         self._rows   = self._build_rows()
@@ -46,9 +44,8 @@ class ScoutViewDialog(BaseDialog):
             else:
                 owner_name = f"?{star.owner_faction_id:02x}"
 
-            ws = sum(g.ship_count for g in star.garrison
-                     if g.ship_type == int(ShipType.WARSHIP))
-            total = sum(g.ship_count for g in star.garrison)
+            ws    = star.warships
+            total = star.warships + star.transports + star.stealthships + star.missiles
             rows.append((star.star_id, star.x, star.y,
                          owner_name, star.planet_type, ws, total, star))
         rows.sort(key=lambda r: r[0])
@@ -62,11 +59,24 @@ class ScoutViewDialog(BaseDialog):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self._btn_close_rect and self._btn_close_rect.collidepoint(event.pos):
                 self.close(None); return
+            cr = self._content_rect()
+            row_y = cr.y + _ROW_H + 4
+            for i, _ in enumerate(self._rows[self._scroll:self._scroll + self._visible()]):
+                r = pygame.Rect(cr.x, row_y + i * _ROW_H, cr.width, _ROW_H)
+                if r.collidepoint(event.pos):
+                    new_sel = self._scroll + i
+                    if new_sel == self._selected:
+                        self._open_planet_detail()
+                    else:
+                        self._selected = new_sel
+                    break
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_UP:
                 self._selected = max(0, self._selected - 1)
             elif event.key == pygame.K_DOWN:
                 self._selected = min(len(self._rows) - 1, self._selected + 1)
+            elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                self._open_planet_detail()
             self._clamp_scroll()
         if event.type == pygame.MOUSEWHEEL:
             self._scroll = max(0, min(
@@ -76,6 +86,13 @@ class ScoutViewDialog(BaseDialog):
     def _visible(self):
         cr = self._content_rect()
         return max(1, (cr.height - _ROW_H - 50) // _ROW_H)
+
+    def _open_planet_detail(self):
+        if not self._rows or self._selected >= len(self._rows):
+            return
+        star = self._rows[self._selected][-1]
+        from second_conflict.ui.dialogs.planet_detail_dlg import PlanetDetailDialog
+        PlanetDetailDialog(self.screen, star, self.state).run()
 
     def _clamp_scroll(self):
         vis = self._visible()
@@ -93,7 +110,7 @@ class ScoutViewDialog(BaseDialog):
                      (x, y))
         y += _ROW_H + 4
 
-        for i, h in enumerate(["Star", "Coords", "Owner", "Type", "WarShip", "Total"]):
+        for i, h in enumerate(["Star", "Coords", "Owner", "Type", "WarShips", "Total"]):
             surface.blit(self._text(h, _HDR_COL), (x + _COLS[i], y))
         y += _ROW_H
 
