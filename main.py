@@ -195,10 +195,12 @@ def main():
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     clock  = pygame.time.Clock()
 
-    state = _load_or_new_game(screen)
-    if state is None:
-        pygame.quit()
-        return
+    # Start with a file from argv, or an empty state (user picks from menu)
+    if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
+        state = _load_file(sys.argv[1])
+    else:
+        from second_conflict.model.game_state import GameState, GameOptions
+        state = GameState(options=GameOptions())
 
     from second_conflict.ui.map_view    import MapView
     from second_conflict.ui.side_panel  import SidePanel
@@ -217,6 +219,8 @@ def main():
     # Wire End Turn
     def on_end_turn():
         nonlocal state
+        if not state.stars:
+            return
         state = _do_end_turn(screen, state, map_view, side_panel, sys_panel)
 
     def on_star_click(star_idx: int, second_click: bool):
@@ -232,10 +236,11 @@ def main():
     # Build menus
     menu_bar.setup([
         Menu("File", [
-            MenuItem("New Game",  pygame.K_n, pygame.KMOD_CTRL),
-            MenuItem("Open...",   pygame.K_o, pygame.KMOD_CTRL),
-            MenuItem("Save...",   pygame.K_s, pygame.KMOD_CTRL),
-            MenuItem("Quit",      pygame.K_q, pygame.KMOD_CTRL),
+            MenuItem("New Game",       pygame.K_n, pygame.KMOD_CTRL),
+            MenuItem("Scenario...",    pygame.K_l, pygame.KMOD_CTRL),
+            MenuItem("Open...",        pygame.K_o, pygame.KMOD_CTRL),
+            MenuItem("Save...",        pygame.K_s, pygame.KMOD_CTRL),
+            MenuItem("Quit",           pygame.K_q, pygame.KMOD_CTRL),
         ]),
         Menu("View", [
             MenuItem("Fleets",          pygame.K_F2),
@@ -262,8 +267,9 @@ def main():
         side_panel.set_state(state)
         sys_panel.set_state(state)
 
-    menu_bar.register("New Game",   lambda: _new_game_action(screen, _set_state))
-    menu_bar.register("Open...",    lambda: _open_action(screen, _set_state))
+    menu_bar.register("New Game",    lambda: _new_game_action(screen, _set_state))
+    menu_bar.register("Scenario...", lambda: _scenario_action(screen, _set_state))
+    menu_bar.register("Open...",     lambda: _open_action(screen, _set_state))
     menu_bar.register("Save...",    lambda: _save_action(screen, state))
     menu_bar.register("Quit",       lambda: pygame.event.post(pygame.event.Event(pygame.QUIT)))
     menu_bar.register("Fleets",         lambda: _show_fleets(screen, state, map_view))
@@ -298,6 +304,9 @@ def main():
         side_panel.draw(screen, map_view.selected_star)
         sys_panel.draw(screen, map_view.selected_star)
         menu_bar.draw(screen)
+
+        if not state.stars:
+            _draw_no_game(screen)
 
         if state.game_over:
             _draw_game_over(screen, state)
@@ -361,6 +370,17 @@ def _new_game_action(screen, set_state_cb):
     s = _new_game(screen)
     if s:
         set_state_cb(s)
+
+def _scenario_action(screen, set_state_cb):
+    from second_conflict.ui.dialogs.scenario_dlg import ScenarioDialog
+    from second_conflict.io.scenario_parser import parse_file
+    path = ScenarioDialog(screen).run()
+    if not path:
+        return
+    try:
+        set_state_cb(parse_file(path))
+    except Exception as e:
+        print(f"Scenario load error: {e}")
 
 def _open_action(screen, set_state_cb):
     s = _load_game(screen)
@@ -468,11 +488,6 @@ def _open_fleet_dialog(screen, state, star_idx: int):
 # Load / new game helpers
 # ---------------------------------------------------------------------------
 
-def _load_or_new_game(screen: pygame.Surface):
-    if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
-        return _load_file(sys.argv[1])
-    return _new_game(screen)
-
 def _new_game(screen: pygame.Surface):
     from second_conflict.ui.dialogs.new_game_dlg import NewGameDialog
     from second_conflict.ui.game_new import build_new_game
@@ -499,6 +514,19 @@ def _load_file(path: str):
 # ---------------------------------------------------------------------------
 # Misc
 # ---------------------------------------------------------------------------
+
+def _draw_no_game(screen: pygame.Surface):
+    font_big  = pygame.font.SysFont('monospace', 28, bold=True)
+    font_sub  = pygame.font.SysFont('monospace', 14)
+    cx, cy = screen.get_width() // 2, screen.get_height() // 2
+    title = font_big.render("Second Conflict", True, (180, 200, 255))
+    sub1  = font_sub.render("File > New Game       — random galaxy", True, (160, 160, 180))
+    sub2  = font_sub.render("File > Scenario...    — load SCWSCEN.*", True, (160, 160, 180))
+    sub3  = font_sub.render("File > Open...        — load saved game", True, (160, 160, 180))
+    screen.blit(title, (cx - title.get_width() // 2, cy - 60))
+    screen.blit(sub1,  (cx - sub1.get_width()  // 2, cy - 10))
+    screen.blit(sub2,  (cx - sub2.get_width()  // 2, cy + 12))
+    screen.blit(sub3,  (cx - sub3.get_width()  // 2, cy + 34))
 
 def _draw_game_over(screen: pygame.Surface, state):
     font = pygame.font.SysFont('monospace', 32, bold=True)

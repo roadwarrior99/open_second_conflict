@@ -30,10 +30,10 @@ class AboutDialog(BaseDialog):
             pass
 
         if self._title_surf:
-            w = _TITLE_W + 260   # image on left, credits on right
+            w = _TITLE_W + 380   # image on left, credits on right
             h = _TITLE_H + 60    # room for title bar + OK button
         else:
-            w, h = 420, 260
+            w, h = 520, 260
 
         super().__init__(screen, "About Second Conflict", width=w, height=h)
         self._hover_ok = False
