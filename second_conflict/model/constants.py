@@ -92,7 +92,7 @@ PLAYER_COLOURS = [
     (  0, 120, 220),   # 0 blue
     (220,  40,  40),   # 1 red
     ( 40, 180,  40),   # 2 green
-    (220, 160,   0),   # 3 yellow
+    (230, 210,   0),   # 3 yellow
     (180,  40, 220),   # 4 purple
     (  0, 200, 200),   # 5 cyan
     (220, 120,   0),   # 6 orange
@@ -100,5 +100,5 @@ PLAYER_COLOURS = [
     (200,  40, 120),   # 8 pink
     ( 80,  80, 200),   # 9 indigo
 ]
-EMPIRE_COLOUR  = (200, 160,  40)   # gold
+EMPIRE_COLOUR  = (180,  60, 180)   # empire violet
 NEUTRAL_COLOUR = ( 80,  80,  80)
