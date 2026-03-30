@@ -205,6 +205,24 @@ def parse_bytes(data: bytes) -> GameState:
     empire_orders = _parse_empire_orders(data)
     players, faction_ids = _parse_players(data, options)
 
+    # Star and fleet owner bytes are stored as 1-based player slot indices
+    # (e.g. slot 4 → byte value 5).  Remap to actual faction_ids so the rest
+    # of the engine can compare owners directly against player.faction_id.
+    # Empire (0x1a = 26) and free slot (0 / 0xFF) are passed through unchanged.
+    slot_to_faction = {(i + 1): fid for i, fid in enumerate(faction_ids)}
+    for star in stars:
+        if star.owner_faction_id not in (EMPIRE_FACTION, 0, 0xFF):
+            star.owner_faction_id = slot_to_faction.get(
+                star.owner_faction_id, star.owner_faction_id)
+        for g in star.garrison:
+            if g.owner_faction_id not in (EMPIRE_FACTION, 0, 0xFF):
+                g.owner_faction_id = slot_to_faction.get(
+                    g.owner_faction_id, g.owner_faction_id)
+    for fleet in fleets:
+        if fleet.owner_faction_id not in (EMPIRE_FACTION, 0, 0xFF):
+            fleet.owner_faction_id = slot_to_faction.get(
+                fleet.owner_faction_id, fleet.owner_faction_id)
+
     state = GameState(
         options=options,
         stars=stars,
