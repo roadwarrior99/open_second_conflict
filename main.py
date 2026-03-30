@@ -238,11 +238,15 @@ def main():
             MenuItem("Quit",      pygame.K_q, pygame.KMOD_CTRL),
         ]),
         Menu("View", [
-            MenuItem("Fleets",      pygame.K_F2),
-            MenuItem("Production",  pygame.K_F3),
-            MenuItem("Unrest",      pygame.K_F4),
-            MenuItem("Statistics",  pygame.K_F1),
-            MenuItem("Options",     pygame.K_F5),
+            MenuItem("Fleets",          pygame.K_F2),
+            MenuItem("Production",      pygame.K_F3),
+            MenuItem("Unrest",          pygame.K_F4),
+            MenuItem("Statistics",      pygame.K_F1),
+            MenuItem("Options",         pygame.K_F5),
+            MenuItem("Planets",         pygame.K_F7),
+            MenuItem("Scout Report",    pygame.K_F8),
+            MenuItem("Reinforcements",  pygame.K_F9),
+            MenuItem("Revolt",          pygame.K_F10),
         ]),
         Menu("Game", [
             MenuItem("End Turn",  pygame.K_RETURN),
@@ -262,11 +266,15 @@ def main():
     menu_bar.register("Open...",    lambda: _open_action(screen, _set_state))
     menu_bar.register("Save...",    lambda: _save_action(screen, state))
     menu_bar.register("Quit",       lambda: pygame.event.post(pygame.event.Event(pygame.QUIT)))
-    menu_bar.register("Fleets",     lambda: _show_fleets(screen, state, map_view))
-    menu_bar.register("Production", lambda: _show_production(screen, state))
-    menu_bar.register("Unrest",     lambda: _show_unrest(screen, state))
-    menu_bar.register("Statistics", lambda: _show_stats(screen, state))
-    menu_bar.register("Options",    lambda: _show_options(screen, state))
+    menu_bar.register("Fleets",         lambda: _show_fleets(screen, state, map_view))
+    menu_bar.register("Production",     lambda: _show_production(screen, state))
+    menu_bar.register("Unrest",         lambda: _show_unrest(screen, state))
+    menu_bar.register("Statistics",     lambda: _show_stats(screen, state))
+    menu_bar.register("Options",        lambda: _show_options(screen, state))
+    menu_bar.register("Planets",        lambda: _show_planets(screen, state))
+    menu_bar.register("Scout Report",   lambda: _show_scout_report(screen, state))
+    menu_bar.register("Reinforcements", lambda: _show_reinforcements(screen, state))
+    menu_bar.register("Revolt",         lambda: _show_revolt(screen, state))
     menu_bar.register("End Turn",   on_end_turn)
     menu_bar.register("Score",      lambda: _show_score(screen, state))
     menu_bar.register("About",      lambda: _show_about(screen))
@@ -406,6 +414,34 @@ def _show_score(screen, state):
 def _show_about(screen):
     from second_conflict.ui.dialogs.about_dlg import AboutDialog
     AboutDialog(screen).run()
+
+def _show_planets(screen, state):
+    current = state.current_player()
+    if not current:
+        return
+    from second_conflict.ui.dialogs.adm_view_dlg import AdminViewDialog
+    AdminViewDialog(screen, state, current.faction_id).run()
+
+def _show_scout_report(screen, state):
+    current = state.current_player()
+    if not current:
+        return
+    from second_conflict.ui.dialogs.scout_view_dlg import ScoutViewDialog
+    ScoutViewDialog(screen, state, current.faction_id).run()
+
+def _show_reinforcements(screen, state):
+    current = state.current_player()
+    if not current:
+        return
+    from second_conflict.ui.dialogs.reinf_view_dlg import ReinfViewDialog
+    ReinfViewDialog(screen, state, current.faction_id).run()
+
+def _show_revolt(screen, state):
+    current = state.current_player()
+    if not current:
+        return
+    from second_conflict.ui.dialogs.revolt_view_dlg import RevoltViewDialog
+    RevoltViewDialog(screen, state, current.faction_id).run()
 
 
 # ---------------------------------------------------------------------------

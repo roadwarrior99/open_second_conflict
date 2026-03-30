@@ -21,6 +21,7 @@ STAR_RADIUS   = 10
 SELECT_RADIUS = 14
 FONT_SIZE     = 11
 MAP_MARGIN    = 40      # pixels of padding around the star field
+_SPRITE_SIZE  = 30     # star sprite display size (pixels)
 
 
 class MapView:
@@ -30,6 +31,8 @@ class MapView:
         self._font   = None
         self._selected_star: int | None = None
         self._on_star_click = None   # callback(star_idx, second_click)
+        self._star_sprites: dict = {}   # colour tuple → pygame.Surface
+        self._sprites_loaded = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -38,6 +41,8 @@ class MapView:
     def set_state(self, state: GameState):
         self.state = state
         self._selected_star = None
+        self._sprites_loaded = False
+        self._star_sprites.clear()
 
     def set_star_click_callback(self, cb):
         """cb(star_idx: int, second_click: bool) → None"""
@@ -83,6 +88,10 @@ class MapView:
         # Fleet transit lines
         self._draw_fleet_lines(surface)
 
+        # Load star sprites once (deferred so pygame.display is ready)
+        if not self._sprites_loaded:
+            self._load_sprites()
+
         # Stars
         for i, star in enumerate(self.state.stars):
             pos = self._star_pos(star)
@@ -92,8 +101,13 @@ class MapView:
             if i == self._selected_star:
                 pygame.draw.circle(surface, (255, 255, 100), pos, SELECT_RADIUS, 2)
 
-            pygame.draw.circle(surface, colour, pos, STAR_RADIUS)
-            pygame.draw.circle(surface, (200, 200, 200), pos, STAR_RADIUS, 1)
+            sprite = self._star_sprites.get(colour)
+            if sprite:
+                half = _SPRITE_SIZE // 2
+                surface.blit(sprite, (pos[0] - half, pos[1] - half))
+            else:
+                pygame.draw.circle(surface, colour, pos, STAR_RADIUS)
+                pygame.draw.circle(surface, (200, 200, 200), pos, STAR_RADIUS, 1)
 
             # Label: id + planet type char
             label = self._font.render(
@@ -106,6 +120,22 @@ class MapView:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _load_sprites(self):
+        self._sprites_loaded = True
+        try:
+            from second_conflict.assets import get_star_sprite
+            colours = set()
+            colours.add(EMPIRE_COLOUR)
+            colours.add(NEUTRAL_COLOUR)
+            for c in PLAYER_COLOURS:
+                colours.add(c)
+            for colour in colours:
+                surf = get_star_sprite(colour, _SPRITE_SIZE)
+                if surf:
+                    self._star_sprites[colour] = surf
+        except Exception:
+            pass
 
     def _star_pos(self, star) -> tuple[int, int]:
         """Map star (x, y) coordinates to screen pixel position."""

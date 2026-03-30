@@ -17,6 +17,8 @@ _COLOR_RED  = (220,  40,  40)
 _COLOR_YEL  = (220, 200,  40)
 _COLOR_DEAD = ( 45,  45,  55)   # "dark" — briefly visible then hidden
 
+_DOT_SCALE  = 2   # scale factor for ship-dot sprites
+
 
 class _Dot:
     __slots__ = ('x', 'y', 'is_attacker', 'state')
@@ -42,6 +44,15 @@ class CombatAnimation(BaseDialog):
 
         self._dots: list[_Dot] = []
         self._casualties: list[tuple[list, list]] = []
+
+        # Try to load the original ship-dot sprite from SCW.EXE
+        self._dot_sprite: pygame.Surface | None = None
+        try:
+            from second_conflict.assets import get_ship_dot
+            self._dot_sprite = get_ship_dot(_DOT_SCALE)
+        except Exception:
+            pass
+
         self._setup_dots()
 
     # ------------------------------------------------------------------
@@ -69,17 +80,24 @@ class CombatAnimation(BaseDialog):
         atk_n = min(self.record.atk_initial, MAX_DOTS)
         def_n = min(self.record.def_initial, MAX_DOTS)
 
+        # Use sprite dimensions if available, else fallback constants
+        if self._dot_sprite:
+            dw = self._dot_sprite.get_width()
+            dh = self._dot_sprite.get_height()
+        else:
+            dw, dh = DOT_W, DOT_H
+
         atk_area = pygame.Rect(ba_x + 4,            ba_y + 4, half_w - 8, ba_h - 8)
         def_area = pygame.Rect(ba_x + ba_w // 2 + 4, ba_y + 4, half_w - 8, ba_h - 8)
 
         for _ in range(atk_n):
-            x = random.randint(atk_area.x, max(atk_area.x, atk_area.right  - DOT_W))
-            y = random.randint(atk_area.y, max(atk_area.y, atk_area.bottom - DOT_H))
+            x = random.randint(atk_area.x, max(atk_area.x, atk_area.right  - dw))
+            y = random.randint(atk_area.y, max(atk_area.y, atk_area.bottom - dh))
             self._dots.append(_Dot(x, y, True))
 
         for _ in range(def_n):
-            x = random.randint(def_area.x, max(def_area.x, def_area.right  - DOT_W))
-            y = random.randint(def_area.y, max(def_area.y, def_area.bottom - DOT_H))
+            x = random.randint(def_area.x, max(def_area.x, def_area.right  - dw))
+            y = random.randint(def_area.y, max(def_area.y, def_area.bottom - dh))
             self._dots.append(_Dot(x, y, False))
 
         # Pre-compute which displayed dots die each round, scaled proportionally.
@@ -182,16 +200,31 @@ class CombatAnimation(BaseDialog):
                          (mid_x, ba_y), (mid_x, ba_y + ba_h))
 
         # Ship dots
+        if self._dot_sprite:
+            dw = self._dot_sprite.get_width()
+            dh = self._dot_sprite.get_height()
+        else:
+            dw, dh = DOT_W, DOT_H
+
         for dot in self._dots:
             if dot.state == 'dead':
                 continue
-            if dot.state == 'red':
-                color = _COLOR_RED
-            elif dot.state == 'yellow':
-                color = _COLOR_YEL
+            if dot.state in ('red', 'yellow'):
+                # Phase colours: draw plain rect so the flash is obvious
+                color = _COLOR_RED if dot.state == 'red' else _COLOR_YEL
+                pygame.draw.rect(surface, color, (dot.x, dot.y, dw, dh))
+            elif self._dot_sprite:
+                # Alive: tint the sprite to faction colour
+                tinted = self._dot_sprite.copy()
+                color  = atk_color if dot.is_attacker else def_color
+                overlay = pygame.Surface((dw, dh))
+                overlay.fill(color)
+                tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
+                tinted.set_colorkey((0, 0, 0))
+                surface.blit(tinted, (dot.x, dot.y))
             else:
                 color = atk_color if dot.is_attacker else def_color
-            pygame.draw.rect(surface, color, (dot.x, dot.y, DOT_W, DOT_H))
+                pygame.draw.rect(surface, color, (dot.x, dot.y, dw, dh))
 
         # Stats row
         stats_y = ba_y + ba_h + 8
