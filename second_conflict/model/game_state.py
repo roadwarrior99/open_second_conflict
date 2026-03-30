@@ -61,9 +61,9 @@ class GameState:
         return [p for p in self.players if p.is_active and p.is_human]
 
     def current_player(self):
-        active = self.active_players()
-        if active:
-            return active[self.current_player_slot % len(active)]
+        humans = self.human_players()
+        if humans:
+            return humans[self.current_player_slot % len(humans)]
         return None
 
     def player_for_faction(self, faction_id: int):
