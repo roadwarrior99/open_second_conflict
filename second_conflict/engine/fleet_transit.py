@@ -76,14 +76,18 @@ def _deliver_fleet(fleet: FleetInTransit, star, state: GameState):
         # Enemy arrival: orbital combat only.  Troops held in orbit for
         # manual invasion — the player uses the Ground Combat dialog.
         rec = combat.resolve_arrival(fleet, star, state)
-        if fleet.stealthships > 0:
-            star.stealthships += fleet.stealthships
-        if fleet.missiles > 0:
-            star.missiles += fleet.missiles
-        # Troops land only if the attacker now controls the star (won orbitally)
-        if fleet.troop_ships > 0 and star.owner_faction_id == fleet.owner_faction_id:
-            star.invasion_troops += fleet.troop_ships
-        # If repelled, troops are lost with the fleet
+        # Ships only land if the attacker now controls the star
+        if star.owner_faction_id == fleet.owner_faction_id:
+            if fleet.missiles > 0:
+                star.missiles += fleet.missiles
+            if fleet.troop_ships > 0:
+                star.invasion_troops += fleet.troop_ships
+        # Repelled: surviving warships/stealthships return to the source star
+        elif fleet.warships > 0 or fleet.stealthships > 0:
+            src = state.stars[fleet.src_star]
+            src.warships     += fleet.warships
+            src.stealthships += fleet.stealthships
+
 
     # Free the transit slot
     fleet.owner_faction_id = FREE_SLOT

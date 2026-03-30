@@ -73,9 +73,20 @@ def _resolve_star(star: Star, state: GameState):
 # ---------------------------------------------------------------------------
 
 def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
-    """Three-round attrition between arriving warships and star's warships."""
-    atk = fleet.warships
-    def_ = star.warships
+    """Three-round attrition between arriving ships and star's ships.
+
+    Warships and stealthships both contribute to combat strength.
+    Losses are distributed proportionally across each ship type.
+    """
+    # Combine ship types for combat strength
+    atk_ws = fleet.warships
+    atk_ss = fleet.stealthships
+    atk    = atk_ws + atk_ss
+
+    def_ws = star.warships
+    def_ss = star.stealthships
+    def_   = def_ws + def_ss
+
     atk_init = atk
     def_init = def_
 
@@ -87,12 +98,24 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
         atk_hit = min(atk_hit, atk)
         def_hit = rand(5) + atk // 3
         def_hit = min(def_hit, def_)
-        atk = max(0, atk - atk_hit)
+        atk  = max(0, atk  - atk_hit)
         def_ = max(0, def_ - def_hit)
         rounds.append((atk_hit, def_hit))
 
-    fleet.warships = atk
-    star.warships  = def_
+    # Distribute surviving ships proportionally back to each type
+    if atk_init > 0:
+        r = atk / atk_init
+        fleet.warships     = round(atk_ws * r)
+        fleet.stealthships = round(atk_ss * r)
+    else:
+        fleet.warships = fleet.stealthships = 0
+
+    if def_init > 0:
+        r = def_ / def_init
+        star.warships     = round(def_ws * r)
+        star.stealthships = round(def_ss * r)
+    else:
+        star.warships = star.stealthships = 0
 
     rec = CombatRecord(
         star_id=star.star_id,
@@ -116,13 +139,15 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
                     f"Combat at star {star.star_id}: attacker lost {atk_losses}, "
                     f"defender lost {def_losses}")
 
-    if def_ == 0 and atk > 0:
+    if def_ == 0:
+        # Defender eliminated — attacker takes the star
         old_owner = star.owner_faction_id
-        star.owner_faction_id = fleet.owner_faction_id
+        star.owner_faction_id  = fleet.owner_faction_id
         star.loyalty = 0   # reset revolt timer on capture
-        # Surviving attacker warships land at the star
-        star.warships += fleet.warships
-        fleet.warships = 0
+        # Surviving attacker ships land at the star
+        star.warships     += fleet.warships
+        star.stealthships += fleet.stealthships
+        fleet.warships = fleet.stealthships = 0
         rec.winner_faction = fleet.owner_faction_id
         state.add_event('combat', fleet.owner_faction_id,
                         f"Star {star.star_id} captured from 0x{old_owner:02x}! "
@@ -131,8 +156,9 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
         # Attacker destroyed: defender holds
         rec.winner_faction = star.owner_faction_id
     else:
-        # Both sides survived: attacker repelled, remaining ships lost
-        fleet.warships = 0
+        # Both sides survived: attacker repelled — ships return to source star
+        # (fleet.warships / stealthships left at post-combat values;
+        #  _deliver_fleet will transfer them back to fleet.src_star)
         rec.winner_faction = star.owner_faction_id
 
     return rec
@@ -147,6 +173,7 @@ def bombard(star: Star, attacker_faction: int, state: GameState) -> dict:
 
     Returns a summary dict: {'firepower': int, 'troops_killed': int, 'planets_freed': list}
     """
+    star.warships -= 1
     firepower = star.warships * _BOMBARD_RATE
     remaining = firepower
     killed_total = 0
