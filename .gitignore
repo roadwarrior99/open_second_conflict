@@ -3,3 +3,5 @@ ghidra
 *.zip
 .idea
 *.pyc
+*.sav
+

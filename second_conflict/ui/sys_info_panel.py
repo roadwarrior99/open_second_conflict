@@ -1,30 +1,72 @@
 """System / planet info panel — translation of SYSLINEWNDPROC + PLTLINEWNDPROC.
 
-Renders as a horizontal strip below the galaxy map.  Shows full detail for
-the currently selected star:
+Renders as a horizontal strip below the galaxy map.  Two sections:
 
-  Left column (SYSLINEWNDPROC):
-    Star id, coordinates, owner, planet type, resource, base production
+  LEFT — Star details (SYSLINEWNDPROC):
+    Star id, coords, owner, resource, base_prod, current planet type.
+    Eight clickable production-type buttons (F P W S T N M D).
+    Clicking a button changes that star's planet_type (own stars only).
+    In novice mode only W / T / F / N are selectable.
 
-  Right column (PLTLINEWNDPROC):
-    Garrison breakdown by faction and ship type
+  RIGHT — Garrison breakdown (PLTLINEWNDPROC):
+    Faction-by-faction garrison list with ship types and counts.
 
-When no star is selected the strip shows a status bar with current player
-and turn info.
+When no star is selected, a plain status bar shows current player and turn.
+
+Faithfully translated from:
+  SYSLINEWNDPROC @ 1010:0000
+  PLTLINEWNDPROC @ 1010:10e6
 """
 import pygame
 from second_conflict.model.constants import (
     PLAYER_COLOURS, EMPIRE_COLOUR, NEUTRAL_COLOUR, EMPIRE_FACTION,
-    SHIP_NAMES, ShipType,
+    SHIP_NAMES, PlanetType,
 )
 from second_conflict.model.game_state import GameState
 
-_BG     = (12, 14, 22)
-_BORDER = (50, 55, 80)
-_LABEL  = (130, 130, 160)
-_VALUE  = (210, 210, 210)
+# Production-type button order from PRODLIMITDLG switch (indices 0-7):
+#   0=F  1=P  2=W  3=S  4=T  5=N  6=M  7=D
+_PROD_TYPES = [
+    PlanetType.FACTORY,    # 0
+    PlanetType.POPULATION, # 1
+    PlanetType.WARSHIP,    # 2
+    PlanetType.SCOUT,      # 3
+    PlanetType.TRANSPORT,  # 4
+    PlanetType.NEUTRAL,    # 5
+    PlanetType.MISSILE,    # 6
+    PlanetType.DEAD,       # 7
+]
+
+_TYPE_LABELS = {
+    PlanetType.WARSHIP:    "WarShip",
+    PlanetType.MISSILE:    "Missile",
+    PlanetType.TRANSPORT:  "TranSport",
+    PlanetType.SCOUT:      "Scout",
+    PlanetType.FACTORY:    "Factory",
+    PlanetType.POPULATION: "Pop",
+    PlanetType.DEAD:       "Dead",
+    PlanetType.NEUTRAL:    "Neutral",
+}
+
+# In novice mode only W/T/F/N are valid selections
+_NOVICE_ALLOWED = {PlanetType.WARSHIP, PlanetType.TRANSPORT,
+                   PlanetType.FACTORY, PlanetType.NEUTRAL}
+
+_BTN_W  = 30
+_BTN_H  = 22
+_BTN_GAP = 3
+
+_BG      = (12, 14, 22)
+_BORDER  = (50, 55, 80)
+_LABEL   = (130, 130, 160)
+_VALUE   = (210, 210, 210)
+_BTN_NRM = (35, 45, 75)
+_BTN_SEL = (60, 120, 60)
+_BTN_HOV = (55, 70, 110)
+_BTN_DIS = (28, 32, 45)
+_BTN_TXT = (200, 200, 220)
+_BTN_DIS_TXT = (70, 70, 90)
 _FONT_SIZE = 12
-_PAD    = 8
 
 
 class SysInfoPanel:
@@ -32,9 +74,61 @@ class SysInfoPanel:
         self.rect  = rect
         self.state = state
         self._font = None
+        self._btn_rects: list[pygame.Rect] = []   # 8 button rects
+        self._hover_btn: int | None = None
+        self._on_type_change = None   # callback(star_idx, new_planet_type)
 
     def set_state(self, state: GameState):
         self.state = state
+
+    def set_type_change_callback(self, cb):
+        """cb(star_idx: int, new_planet_type: str) → None"""
+        self._on_type_change = cb
+
+    # ------------------------------------------------------------------
+    # Event handling
+    # ------------------------------------------------------------------
+
+    def handle_event(self, event: pygame.event.Event,
+                     selected_star_idx: int | None = None):
+        if selected_star_idx is None:
+            return
+        if selected_star_idx >= len(self.state.stars):
+            return
+
+        star = self.state.stars[selected_star_idx]
+        current_player = self.state.current_player()
+        if current_player is None:
+            return
+        if star.owner_faction_id != current_player.faction_id:
+            return   # can only change own stars
+
+        novice = self.state.options.novice_mode
+
+        if event.type == pygame.MOUSEMOTION:
+            self._hover_btn = None
+            for i, r in enumerate(self._btn_rects):
+                if r.collidepoint(event.pos):
+                    pt = _PROD_TYPES[i]
+                    if novice and pt not in _NOVICE_ALLOWED:
+                        break
+                    self._hover_btn = i
+                    break
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for i, r in enumerate(self._btn_rects):
+                if r.collidepoint(event.pos):
+                    pt = _PROD_TYPES[i]
+                    if novice and pt not in _NOVICE_ALLOWED:
+                        return
+                    star.planet_type = pt
+                    if self._on_type_change:
+                        self._on_type_change(selected_star_idx, pt)
+                    return
+
+    # ------------------------------------------------------------------
+    # Rendering
+    # ------------------------------------------------------------------
 
     def draw(self, surface: pygame.Surface, selected_star_idx: int | None = None):
         if self._font is None:
@@ -45,83 +139,113 @@ class SysInfoPanel:
                          (self.rect.x, self.rect.y),
                          (self.rect.right, self.rect.y))
 
-        if selected_star_idx is None:
+        self._btn_rects = []
+
+        if selected_star_idx is None or selected_star_idx >= len(self.state.stars):
             self._draw_status_bar(surface)
-        else:
-            self._draw_star_info(surface, selected_star_idx)
+            return
+
+        star = self.state.stars[selected_star_idx]
+        current_player = self.state.current_player()
+        is_own = (current_player is not None and
+                  star.owner_faction_id == current_player.faction_id)
+
+        self._draw_star_info(surface, star, is_own)
+        self._draw_garrison(surface, star)
 
     # ------------------------------------------------------------------
 
     def _draw_status_bar(self, surface: pygame.Surface):
-        x = self.rect.x + _PAD
-        y = self.rect.y + _PAD
+        x = self.rect.x + 8
+        y = self.rect.y + (self.rect.height - _FONT_SIZE) // 2
         player = self.state.current_player()
         if player:
             pidx   = self.state.players.index(player)
             colour = PLAYER_COLOURS[pidx] if pidx < len(PLAYER_COLOURS) else (180, 180, 180)
-            pygame.draw.rect(surface, colour, (x, y + 1, 10, 10))
+            pygame.draw.rect(surface, colour, (x, y, 10, 10))
             line = (f"  {player.name}   "
                     f"Turn {self.state.turn}   "
                     f"Stars: {player.empire_size}   "
                     f"Credits: {player.credits}   "
                     f"Fleet: {player.fleet_count}")
             surface.blit(self._font.render(line, True, _VALUE), (x + 14, y))
+        else:
+            surface.blit(self._font.render("No active player", True, _LABEL), (x, y))
 
-    def _draw_star_info(self, surface: pygame.Surface, idx: int):
-        if idx >= len(self.state.stars):
-            return
-        star = self.state.stars[idx]
+    def _draw_star_info(self, surface: pygame.Surface, star, is_own: bool):
+        x = self.rect.x + 8
+        y = self.rect.y + 5
+        novice = self.state.options.novice_mode
+
         owner_player = self.state.player_for_faction(star.owner_faction_id)
         owner_name = (
-            "The Empire" if star.owner_faction_id == EMPIRE_FACTION
-            else (owner_player.name if owner_player else f"0x{star.owner_faction_id:02x}")
+            "Empire" if star.owner_faction_id == EMPIRE_FACTION
+            else (owner_player.name[:8] if owner_player else f"?{star.owner_faction_id:02x}")
         )
+        type_name = _TYPE_LABELS.get(star.planet_type, star.planet_type)
+        info = (f"Star {star.star_id}  ({star.x},{star.y})  "
+                f"Res:{star.resource}  "
+                f"Owner:{owner_name}  "
+                f"Type:{type_name}")
+        surface.blit(self._font.render(info, True, _VALUE), (x, y))
 
-        # Left section: star stats
-        lx = self.rect.x + _PAD
-        y  = self.rect.y + _PAD
+        # Production type buttons (only drawn/active for own stars)
+        bx = x
+        by = y + _FONT_SIZE + 4
+        for i, pt in enumerate(_PROD_TYPES):
+            disabled = (novice and pt not in _NOVICE_ALLOWED) or not is_own
+            selected = (star.planet_type == pt)
+            hover    = (self._hover_btn == i and not disabled)
 
-        left_fields = [
-            ("Star",     f"{star.star_id}"),
-            ("Coords",   f"({star.x}, {star.y})"),
-            ("Type",     str(star.planet_type)),
-            ("Resource", str(star.resource)),
-            ("Owner",    owner_name),
-        ]
-        col_w = 130
-        for label, value in left_fields:
-            lbl = self._font.render(f"{label}:", True, _LABEL)
-            val = self._font.render(value,        True, _VALUE)
-            surface.blit(lbl, (lx, y))
-            surface.blit(val, (lx + 60, y))
-            lx += col_w
-            if lx + col_w > self.rect.centerx:
-                lx = self.rect.x + _PAD
-                y += _FONT_SIZE + 3
+            if disabled:
+                bg = _BTN_DIS
+            elif selected:
+                bg = _BTN_SEL
+            elif hover:
+                bg = _BTN_HOV
+            else:
+                bg = _BTN_NRM
 
-        # Right section: garrison breakdown
-        rx = self.rect.centerx + _PAD
-        y  = self.rect.y + _PAD
+            btn_rect = pygame.Rect(bx, by, _BTN_W, _BTN_H)
+            self._btn_rects.append(btn_rect)
+            pygame.draw.rect(surface, bg, btn_rect, border_radius=3)
+            pygame.draw.rect(surface, _BORDER, btn_rect, 1, border_radius=3)
 
-        # Aggregate by (faction, ship_type)
-        garrison_rows: list[tuple] = []
-        faction_seen: set[int] = set()
-        for g in star.garrison:
-            if g.ship_count <= 0:
-                continue
-            faction_seen.add(g.owner_faction_id)
-            p = self.state.player_for_faction(g.owner_faction_id)
-            fname = (
-                "Empire" if g.owner_faction_id == EMPIRE_FACTION
-                else (p.name[:6] if p else f"0x{g.owner_faction_id:02x}")
-            )
-            ship_name = SHIP_NAMES.get(g.ship_type, f"T{g.ship_type}")
-            garrison_rows.append((fname, ship_name, g.ship_count))
+            txt_col = _BTN_DIS_TXT if disabled else _BTN_TXT
+            lbl = self._font.render(pt, True, txt_col)
+            surface.blit(lbl, (bx + (_BTN_W - lbl.get_width()) // 2,
+                                by  + (_BTN_H - lbl.get_height()) // 2))
+            bx += _BTN_W + _BTN_GAP
 
-        if not garrison_rows:
+        # Tooltip hint
+        if is_own:
+            hint = self._font.render("Click to select production type", True, _LABEL)
+            surface.blit(hint, (bx + 8, by + (_BTN_H - hint.get_height()) // 2))
+
+    def _draw_garrison(self, surface: pygame.Surface, star):
+        """Right-hand section: garrison breakdown (PLTLINEWNDPROC)."""
+        rx = self.rect.centerx + 8
+        y  = self.rect.y + 5
+
+        valid = [(g.owner_faction_id, g.ship_type, g.ship_count)
+                 for g in star.garrison if g.ship_count > 0]
+
+        if not valid:
             surface.blit(self._font.render("No garrison", True, _LABEL), (rx, y))
-        else:
-            for fname, sname, count in garrison_rows[:5]:  # cap rows to panel height
-                line = f"{fname:<7} {sname:<12} {count:>4}"
-                surface.blit(self._font.render(line, True, _VALUE), (rx, y))
-                y += _FONT_SIZE + 2
+            return
+
+        # Show up to 4 rows to fit the panel height
+        for owner_id, ship_type, count in valid[:4]:
+            p = self.state.player_for_faction(owner_id)
+            fname = (
+                "Empire" if owner_id == EMPIRE_FACTION
+                else (p.name[:6] if p else f"?{owner_id:02x}")
+            )
+            sname = SHIP_NAMES.get(ship_type, f"T{ship_type}")
+            line  = f"{fname:<7} {sname:<12} ×{count}"
+            surface.blit(self._font.render(line, True, _VALUE), (rx, y))
+            y += _FONT_SIZE + 3
+
+        if len(valid) > 4:
+            more = self._font.render(f"  +{len(valid)-4} more…", True, _LABEL)
+            surface.blit(more, (rx, y))

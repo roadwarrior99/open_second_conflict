@@ -52,10 +52,11 @@ class BaseDialog:
                     self._running = False
                     self._result = None
                 self.handle_event(event)
+            dt = clock.tick(30)
+            self.update(dt)
             self._draw_backdrop()
             self.draw(self.screen)
             pygame.display.flip()
-            clock.tick(30)
         return self._result
 
     def close(self, result=None):
@@ -70,6 +71,10 @@ class BaseDialog:
         """Override to handle input.  Call super() to get ESC-to-close."""
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.close(None)
+
+    def update(self, dt: int):
+        """Called every frame with elapsed milliseconds.  Override for animations
+        or hold-repeat button logic."""
 
     def draw(self, surface: pygame.Surface):
         """Override to draw dialog contents.  Call super() first."""

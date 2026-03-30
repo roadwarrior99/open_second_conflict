@@ -225,6 +225,9 @@ def main():
 
     map_view.set_star_click_callback(on_star_click)
     side_panel.set_end_turn_callback(on_end_turn)
+    sys_panel.set_type_change_callback(
+        lambda star_idx, pt: None   # state already mutated; map redraws next frame
+    )
 
     # Build menus
     menu_bar.setup([
@@ -280,6 +283,7 @@ def main():
 
             map_view.handle_event(event)
             side_panel.handle_event(event)
+            sys_panel.handle_event(event, map_view.selected_star)
 
         screen.fill(BG_COLOUR)
         map_view.draw(screen)

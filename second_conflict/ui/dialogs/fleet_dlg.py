@@ -49,7 +49,6 @@ class FleetDialog(BaseDialog):
         # Destination input
         self._dest_str   = ""
         self._dest_error = ""
-        self._active_row: int | None = None   # which ship-type row is focused for +/-
         self._hover_ok   = False
         self._hover_can  = False
 
@@ -58,6 +57,17 @@ class FleetDialog(BaseDialog):
         self._btn_can_rect = None
         self._plus_rects:  dict[int, pygame.Rect] = {}
         self._minus_rects: dict[int, pygame.Rect] = {}
+
+        # Hold-repeat state: (ship_type, delta) while a +/- button is held
+        self._held:         tuple[int, int] | None = None  # (ship_type, +1 or -1)
+        self._hold_timer:   int = 0   # ms since button pressed
+        self._hold_accum:   int = 0   # ms since last repeat tick
+        _INITIAL_DELAY      = 400     # ms before repeat starts
+        _REPEAT_INTERVAL    = 60      # ms between repeat ticks (speeds up after 1 s)
+        _FAST_INTERVAL      = 20      # ms between ticks after 1 s of holding
+        self._INITIAL_DELAY  = _INITIAL_DELAY
+        self._REPEAT_INTERVAL = _REPEAT_INTERVAL
+        self._FAST_INTERVAL   = _FAST_INTERVAL
 
     # ------------------------------------------------------------------
 
@@ -77,10 +87,17 @@ class FleetDialog(BaseDialog):
                 return
             for st, r in self._plus_rects.items():
                 if r.collidepoint(pos):
-                    self._send[st] = min(self._send[st] + 1, self._avail.get(st, 0))
+                    self._apply_delta(st, +1)
+                    self._start_hold(st, +1)
+                    return
             for st, r in self._minus_rects.items():
                 if r.collidepoint(pos):
-                    self._send[st] = max(0, self._send[st] - 1)
+                    self._apply_delta(st, -1)
+                    self._start_hold(st, -1)
+                    return
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self._held = None
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN:
@@ -90,6 +107,35 @@ class FleetDialog(BaseDialog):
             elif event.unicode.isdigit():
                 if len(self._dest_str) < 3:
                     self._dest_str += event.unicode
+
+    def update(self, dt: int):
+        if self._held is None:
+            return
+        st, delta = self._held
+        self._hold_timer += dt
+        if self._hold_timer < self._INITIAL_DELAY:
+            return
+        # Choose repeat interval: fast after 1 second of holding
+        interval = (self._FAST_INTERVAL
+                    if self._hold_timer > 1000
+                    else self._REPEAT_INTERVAL)
+        self._hold_accum += dt
+        while self._hold_accum >= interval:
+            self._hold_accum -= interval
+            self._apply_delta(st, delta)
+
+    def _start_hold(self, ship_type: int, delta: int):
+        self._held       = (ship_type, delta)
+        self._hold_timer = 0
+        self._hold_accum = 0
+
+    def _apply_delta(self, ship_type: int, delta: int):
+        if delta > 0:
+            self._send[ship_type] = min(
+                self._send[ship_type] + 1, self._avail.get(ship_type, 0)
+            )
+        else:
+            self._send[ship_type] = max(0, self._send[ship_type] - 1)
 
     def draw(self, surface: pygame.Surface):
         super().draw(surface)
