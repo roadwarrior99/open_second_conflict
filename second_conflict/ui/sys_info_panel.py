@@ -48,6 +48,21 @@ _TYPE_LABELS = {
     PlanetType.NEUTRAL:    "Neutral",
 }
 
+_TYPE_TOOLTIPS = {
+    PlanetType.WARSHIP:    "WarShip — 1 WarShip per credit",
+    PlanetType.MISSILE:    "Missile — 1 Missile per 2 credits",
+    PlanetType.TRANSPORT:  "TranSport — 1 TranSport per 3 credits",
+    PlanetType.SCOUT:      "Scout — 1 Scout per 3 credits",
+    PlanetType.FACTORY:    "Factory — resource grows each turn; also builds WarShips",
+    PlanetType.POPULATION: "Population — grows up to 10 pop; each unit = 1 WarShip/turn",
+    PlanetType.DEAD:       "Dead — terraforms into WarShip world after 10 turns",
+    PlanetType.NEUTRAL:    "Neutral — no production",
+}
+
+_TOOLTIP_BG   = (30, 34, 52)
+_TOOLTIP_FG   = (220, 220, 240)
+_TOOLTIP_BORDER = (90, 100, 160)
+
 # In novice mode only W/T/F/N are valid selections
 _NOVICE_ALLOWED = {PlanetType.WARSHIP, PlanetType.TRANSPORT,
                    PlanetType.FACTORY, PlanetType.NEUTRAL}
@@ -107,13 +122,14 @@ class SysInfoPanel:
 
         if event.type == pygame.MOUSEMOTION:
             self._hover_btn = None
-            for i, r in enumerate(self._btn_rects):
-                if r.collidepoint(event.pos):
-                    pt = _PROD_TYPES[i]
-                    if novice and pt not in _NOVICE_ALLOWED:
+            if self.rect.collidepoint(event.pos):
+                for i, r in enumerate(self._btn_rects):
+                    if r.collidepoint(event.pos):
+                        pt = _PROD_TYPES[i]
+                        if novice and pt not in _NOVICE_ALLOWED:
+                            break
+                        self._hover_btn = i
                         break
-                    self._hover_btn = i
-                    break
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for i, r in enumerate(self._btn_rects):
@@ -152,6 +168,11 @@ class SysInfoPanel:
 
         self._draw_star_info(surface, star, is_own)
         self._draw_garrison(surface, star)
+
+        # Tooltip — drawn last so it renders on top of everything
+        if self._hover_btn is not None and self._hover_btn < len(self._btn_rects):
+            pt = _PROD_TYPES[self._hover_btn]
+            self._draw_tooltip(surface, self._btn_rects[self._hover_btn], pt)
 
     # ------------------------------------------------------------------
 
@@ -249,3 +270,26 @@ class SysInfoPanel:
         if len(valid) > 4:
             more = self._font.render(f"  +{len(valid)-4} more…", True, _LABEL)
             surface.blit(more, (rx, y))
+
+    def _draw_tooltip(self, surface: pygame.Surface,
+                      anchor: pygame.Rect, planet_type: str):
+        """Render a small tooltip above the hovered production button."""
+        text = _TYPE_TOOLTIPS.get(planet_type, planet_type)
+        lbl  = self._font.render(text, True, _TOOLTIP_FG)
+        pad  = 5
+        tw   = lbl.get_width()  + pad * 2
+        th   = lbl.get_height() + pad * 2
+
+        # Position above the button; clamp so it doesn't leave the screen
+        tx = anchor.centerx - tw // 2
+        ty = anchor.top - th - 3
+        sw = surface.get_width()
+        tx = max(0, min(tx, sw - tw))
+        # If above panel top, flip below the button instead
+        if ty < 0:
+            ty = anchor.bottom + 3
+
+        tip_rect = pygame.Rect(tx, ty, tw, th)
+        pygame.draw.rect(surface, _TOOLTIP_BG, tip_rect, border_radius=3)
+        pygame.draw.rect(surface, _TOOLTIP_BORDER, tip_rect, 1, border_radius=3)
+        surface.blit(lbl, (tx + pad, ty + pad))
