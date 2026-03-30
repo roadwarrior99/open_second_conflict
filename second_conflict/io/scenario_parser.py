@@ -28,6 +28,176 @@ def parse_file(path) -> GameState:
     return parse_bytes(data)
 
 
+def write_file(state: GameState, path) -> None:
+    """Serialise a GameState back to the binary file format and write it."""
+    data = write_bytes(state)
+    Path(path).write_bytes(data)
+
+
+def write_bytes(state: GameState) -> bytes:
+    """Serialise a GameState to the 10-section binary format."""
+    buf = bytearray(OFFSET_SCENARIO_META + SIZE_SCENARIO_META)
+
+    # ------------------------------------------------------------------
+    # Section 1: Header (18 bytes)
+    # ------------------------------------------------------------------
+    o = state.options
+    buf[0]  = o.num_players
+    buf[1]  = (o.mode_flag * 8) if not o.is_savegame else 0x08
+    buf[3]  = o.map_param & 0xFF
+    struct.pack_into('<H', buf, 4, o.state_flags)
+    buf[6]  = STAR_COUNT
+    buf[7]  = o.sim_steps
+    buf[8]  = o.state_flags & 0xFF
+    buf[10] = o.difficulty
+    struct.pack_into('<H', buf, 16, o.version)
+
+    # ------------------------------------------------------------------
+    # Section 2: Star records (26 × 99 bytes)
+    # ------------------------------------------------------------------
+    for star in state.stars:
+        off = OFFSET_STAR_RECORDS + star.star_id * STAR_STRIDE
+        # Use the raw bytes if available (preserves unknown fields)
+        if star._raw and len(star._raw) == STAR_STRIDE:
+            rec = bytearray(star._raw)
+        else:
+            rec = bytearray(STAR_STRIDE)
+
+        rec[0] = star.star_id
+        if star.star_id == 0:
+            rec[9]  = star.x
+            rec[10] = star.y
+        else:
+            rec[1] = star.x
+            rec[2] = star.y
+
+        rec[3] = star.owner_faction_id & 0xFF
+        # num_garrison count
+        valid_garrison = [g for g in star.garrison if g.ship_count > 0]
+        rec[5] = min(len(valid_garrison), 8)
+
+        if star.star_id != 0:
+            rec[9]  = ord(star.planet_type) if isinstance(star.planet_type, str) else star.planet_type
+            rec[6]  = max(0, min(255, star.resource))
+
+        # TLV garrison entries from byte +11, each 7 bytes
+        for gi, g in enumerate(valid_garrison[:8]):
+            tlv = 11 + gi * 7
+            rec[tlv]     = g.owner_faction_id & 0xFF
+            rec[tlv + 1] = 0x01
+            rec[tlv + 2] = int(g.ship_type) & 0xFF
+            struct.pack_into('<I', rec, tlv + 3, max(0, g.ship_count))
+
+        # Production accumulators
+        if len(rec) > 90:
+            struct.pack_into('<h', rec, 81, max(-32768, min(32767, star.prod_warships)))
+            struct.pack_into('<h', rec, 83, max(-32768, min(32767, star.prod_transports)))
+            struct.pack_into('<h', rec, 85, max(-32768, min(32767, star.prod_scouts)))
+            struct.pack_into('<h', rec, 87, max(-32768, min(32767, star.prod_stealthships)))
+            struct.pack_into('<h', rec, 89, max(-32768, min(32767, star.prod_population)))
+
+        buf[off : off + STAR_STRIDE] = rec
+
+    # ------------------------------------------------------------------
+    # Section 3: Fleet-in-transit (400 × 21 bytes)
+    # ------------------------------------------------------------------
+    for fleet in state.fleets_in_transit:
+        off = OFFSET_FLEET_TRANSIT + fleet.slot * FLEET_STRIDE
+        rec = bytearray(FLEET_STRIDE)
+        rec[0]  = fleet.owner_faction_id & 0xFF
+        rec[1]  = fleet.dest_star & 0xFF
+        struct.pack_into('<h', rec, 2, max(-32768, min(32767, fleet.turns_remaining)))
+        rec[4]  = fleet.flag_unknown & 0xFF
+        rec[5]  = fleet.created_flag & 0xFF
+        struct.pack_into('<h', rec, 6,  max(0, fleet.warships))
+        struct.pack_into('<h', rec, 8,  max(0, fleet.stealthships))
+        struct.pack_into('<h', rec, 10, max(0, fleet.transports))
+        struct.pack_into('<h', rec, 12, max(0, fleet.missiles))
+        struct.pack_into('<h', rec, 14, max(0, fleet.scouts))
+        struct.pack_into('<h', rec, 16, max(0, fleet.probes))
+        rec[18] = ord(fleet.fleet_type_char) if fleet.fleet_type_char else ord('C')
+        rec[19] = fleet.src_star & 0xFF
+        buf[off : off + FLEET_STRIDE] = rec
+
+    # ------------------------------------------------------------------
+    # Section 4: Empire orders (26 × 21 bytes)
+    # ------------------------------------------------------------------
+    for order in state.empire_orders:
+        off = OFFSET_EMPIRE_ORDERS + order.star_index * FLEET_STRIDE
+        if order._raw and len(order._raw) == FLEET_STRIDE:
+            rec = bytearray(order._raw)
+        else:
+            rec = bytearray(FLEET_STRIDE)
+            rec[0] = order.active & 0xFF
+            rec[1] = order.dest_faction & 0xFF
+            rec[5] = order.active_flag & 0xFF
+            struct.pack_into('<h', rec, 6,  order.warships)
+            struct.pack_into('<h', rec, 8,  order.garrison_max)
+            struct.pack_into('<h', rec, 10, order.reinforcements)
+            struct.pack_into('<h', rec, 12, order.field_12)
+            struct.pack_into('<h', rec, 14, order.field_14)
+            struct.pack_into('<h', rec, 16, order.field_16)
+        buf[off : off + FLEET_STRIDE] = rec
+
+    # ------------------------------------------------------------------
+    # Sections 5-7: unknown — preserve raw bytes
+    # ------------------------------------------------------------------
+    if state._raw_unknown_a:
+        a = state._raw_unknown_a[:SIZE_UNKNOWN_A]
+        buf[OFFSET_UNKNOWN_A : OFFSET_UNKNOWN_A + len(a)] = a
+    if state._raw_unknown_b:
+        b = state._raw_unknown_b[:SIZE_UNKNOWN_B]
+        buf[OFFSET_UNKNOWN_B : OFFSET_UNKNOWN_B + len(b)] = b
+    if state._raw_unknown_c:
+        c = state._raw_unknown_c[:SIZE_UNKNOWN_C]
+        buf[OFFSET_UNKNOWN_C : OFFSET_UNKNOWN_C + len(c)] = c
+
+    # ------------------------------------------------------------------
+    # Section 8: Player records (26 × 63 bytes)
+    # ------------------------------------------------------------------
+    for player in state.players:
+        off = OFFSET_PLAYER_RECORDS + player.slot * PLAYER_STRIDE
+        rec = bytearray(PLAYER_STRIDE)
+        # Name at +0 (9 bytes, null-padded)
+        name_enc = player.name.encode('latin-1', errors='replace')[:9]
+        rec[0 : len(name_enc)] = name_enc
+        # Attributes at +9 (27 × uint16)
+        attrs = [0] * 27
+        attrs[0]  = player.active_flag
+        attrs[2]  = player.fleet_types_active
+        attrs[3]  = player.fleet_limit
+        attrs[6]  = player.budget
+        attrs[7]  = player.credits
+        attrs[8]  = player.param8
+        attrs[9]  = player.empire_size
+        attrs[10] = player.production
+        attrs[11] = player.fleet_count
+        attrs[12] = player.strength
+        attrs[13] = player.difficulty
+        attrs[15] = player.rating_a
+        attrs[16] = player.rating_b
+        attrs[25] = player.tech_level
+        attrs[26] = player.game_param
+        struct.pack_into('<27H', rec, 9, *attrs)
+        buf[off : off + PLAYER_STRIDE] = rec
+
+    # ------------------------------------------------------------------
+    # Section 9: Game state (faction IDs)
+    # ------------------------------------------------------------------
+    faction_ids = state.faction_ids[:10]
+    faction_ids += [0] * (10 - len(faction_ids))
+    struct.pack_into('<10H', buf, OFFSET_GAME_STATE, *faction_ids)
+
+    # ------------------------------------------------------------------
+    # Section 10: Scenario meta — preserve raw bytes
+    # ------------------------------------------------------------------
+    if state._raw_scenario_meta:
+        m = state._raw_scenario_meta[:SIZE_SCENARIO_META]
+        buf[OFFSET_SCENARIO_META : OFFSET_SCENARIO_META + len(m)] = m
+
+    return bytes(buf)
+
+
 def parse_bytes(data: bytes) -> GameState:
     options = _parse_header(data)
     stars = _parse_stars(data, options)
