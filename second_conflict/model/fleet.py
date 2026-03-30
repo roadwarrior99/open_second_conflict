@@ -30,7 +30,8 @@ class FleetInTransit:
     src_star: int = 0           # source star (byte +19, used for rendering)
 
     warships:     int = 0
-    troop_ships:  int = 0   # loaded TranSports (binary offset +8)
+    transports:   int = 0   # TranSport ship count in transit
+    troop_ships:  int = 0   # troops loaded onto those transports
     stealthships: int = 0   # binary offset +10
     missiles:     int = 0
     scouts:       int = 0

@@ -328,11 +328,11 @@ def _do_end_turn(screen, state, map_view, side_panel, sys_panel):
     from second_conflict.engine.turn_runner import run_turn
     from second_conflict.ui.dialogs.events_dlg import EventsDialog
 
-    new_events, combat_records = run_turn(state)
-
-    # Show battle animation for each combat that involved the current player
+    # Capture the acting player's faction before run_turn can eliminate them
     current = state.current_player()
     faction = current.faction_id if current else 0
+
+    new_events, combat_records = run_turn(state)
 
     if combat_records:
         from second_conflict.ui.dialogs.combat_anim import CombatAnimation

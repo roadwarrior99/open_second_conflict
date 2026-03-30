@@ -56,6 +56,7 @@ def _deliver_fleet(fleet: FleetInTransit, star, state: GameState):
     if is_friendly:
         # Reinforce: add ships directly to star
         star.warships     += fleet.warships
+        star.transports   += fleet.transports
         star.stealthships += fleet.stealthships
         star.missiles     += fleet.missiles
         # Troops arrive in orbit — held as invasion_troops for manual ground combat.
@@ -78,21 +79,22 @@ def _deliver_fleet(fleet: FleetInTransit, star, state: GameState):
         rec = combat.resolve_arrival(fleet, star, state)
         # Ships only land if the attacker now controls the star
         if star.owner_faction_id == fleet.owner_faction_id:
-            if fleet.missiles > 0:
-                star.missiles += fleet.missiles
+            star.transports += fleet.transports
+            star.missiles   += fleet.missiles
             if fleet.troop_ships > 0:
                 star.invasion_troops += fleet.troop_ships
-        # Repelled: surviving warships/stealthships return to the source star
+        # Repelled: surviving ships return to the source star; troops are lost
         elif fleet.warships > 0 or fleet.stealthships > 0:
             src = state.stars[fleet.src_star]
             src.warships     += fleet.warships
+            src.transports   += fleet.transports
             src.stealthships += fleet.stealthships
-
 
     # Free the transit slot
     fleet.owner_faction_id = FREE_SLOT
     fleet.turns_remaining  = 0
     fleet.warships     = 0
+    fleet.transports   = 0
     fleet.troop_ships  = 0
     fleet.stealthships = 0
     fleet.missiles     = 0
@@ -150,6 +152,7 @@ def dispatch_fleet(state: GameState, src_star_idx: int, dest_star_idx: int,
     free_slot.turns_remaining  = turns
     free_slot.fleet_type_char  = fleet_type_char
     free_slot.warships         = warships
+    free_slot.transports       = transports
     free_slot.troop_ships      = troop_ships
     free_slot.stealthships     = stealthships
     free_slot.missiles         = missiles

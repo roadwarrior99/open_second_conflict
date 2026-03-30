@@ -104,11 +104,11 @@ def _produce(star, credits: int, state: GameState):
             )
 
     elif pt == PlanetType.DEAD:
-        # Dead world: count turns held (use warships as counter), convert after 10
-        star.warships += 1
-        if star.warships >= 10:
+        # Dead world: count turns held, convert after 10
+        star.dead_counter += 1
+        if star.dead_counter >= 10:
             star.planet_type = PlanetType.WARSHIP
-            star.warships = 0
+            star.dead_counter = 0
             state.add_event(
                 'reinforce', star.owner_faction_id,
                 f"Dead star {star.star_id} terraformed into a WarShip world"

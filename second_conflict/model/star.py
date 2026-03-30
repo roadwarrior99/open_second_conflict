@@ -62,6 +62,9 @@ class Star:
     # Loyalty/stability at the star level
     loyalty: int = 0
 
+    # Turns held for DEAD-world terraforming countdown (separate from warships garrison)
+    dead_counter: int = 0
+
     # Raw trailing bytes preserved for round-trip file fidelity
     _raw: bytes = field(default=b'', repr=False)
 
