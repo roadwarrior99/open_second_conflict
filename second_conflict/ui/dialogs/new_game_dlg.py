@@ -29,6 +29,7 @@ class NewGameDialog(BaseDialog):
         self._novice_mode   = False
         self._empire_builds = True
         self._names         = [f"Player {i+1}" for i in range(10)]
+        self._is_ai         = [False] * 10   # per-player AI flag
         self._editing_name: int | None = None
         self._hover_next    = False
         self._hover_back    = False
@@ -39,6 +40,7 @@ class NewGameDialog(BaseDialog):
         # +/- button rects for page 0 numeric fields
         self._inc_rects: dict[str, pygame.Rect] = {}
         self._dec_rects: dict[str, pygame.Rect] = {}
+        self._ai_rects:  dict[int, pygame.Rect] = {}
 
     # ------------------------------------------------------------------
 
@@ -142,7 +144,14 @@ class NewGameDialog(BaseDialog):
 
     def _draw_page1(self, surface, cr):
         x, y = cr.x, cr.y
-        surface.blit(self._title_text("Player Names"), (x, y)); y += 24
+        surface.blit(self._title_text("Player Names"), (x, y)); y += 16
+
+        # Column headers
+        surface.blit(self._text("Name", (160, 160, 210)), (x + 40, y))
+        surface.blit(self._text("AI?",  (160, 160, 210)), (x + 210, y))
+        y += 18
+
+        self._ai_rects.clear()
         for i in range(self._num_players):
             lbl = self._text(f"P{i+1}:")
             surface.blit(lbl, (x, y))
@@ -154,8 +163,21 @@ class NewGameDialog(BaseDialog):
             pygame.draw.rect(surface, (100, 100, 160), box, 1)
             n_surf = self._text((name + "|") if editing else name)
             surface.blit(n_surf, (box.x + 3, box.y + 1))
-            # Store box rect for click detection (keyed by player index)
             self._dec_rects[f'name_{i}'] = box
+
+            # AI toggle checkbox
+            ai_box = pygame.Rect(x + 210, y, 20, 18)
+            check_col = (50, 50, 80)
+            pygame.draw.rect(surface, check_col, ai_box)
+            pygame.draw.rect(surface, (100, 100, 160), ai_box, 1)
+            if self._is_ai[i]:
+                surface.blit(self._text("X", (120, 200, 120)), (ai_box.x + 4, ai_box.y + 1))
+            self._ai_rects[i] = ai_box
+
+            # "AI" label when toggled
+            if self._is_ai[i]:
+                surface.blit(self._text("(AI)", (120, 200, 120)), (x + 236, y))
+
             y += _ROW_H
 
     def _draw_page2(self, surface, cr):
@@ -193,6 +215,10 @@ class NewGameDialog(BaseDialog):
 
     def _handle_page1_click(self, pos):
         for i in range(self._num_players):
+            if i in self._ai_rects and self._ai_rects[i].collidepoint(pos):
+                self._is_ai[i] = not self._is_ai[i]
+                self._editing_name = None
+                return
             key = f'name_{i}'
             if key in self._dec_rects and self._dec_rects[key].collidepoint(pos):
                 self._editing_name = i
@@ -228,4 +254,5 @@ class NewGameDialog(BaseDialog):
             self.close({
                 'options': opts,
                 'names':   self._names[:self._num_players],
+                'is_ai':   self._is_ai[:self._num_players],
             })

@@ -479,7 +479,7 @@ def _new_game(screen: pygame.Surface):
     result = dlg.run()
     if result is None:
         return None
-    return build_new_game(result['options'], result['names'])
+    return build_new_game(result['options'], result['names'], result.get('is_ai'))
 
 def _load_game(screen: pygame.Surface):
     try:

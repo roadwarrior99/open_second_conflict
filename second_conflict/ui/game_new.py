@@ -30,8 +30,11 @@ _EMPIRE_GARRISON        = 5    # ships at Empire stars at game start
 _STAR_COUNT             = 26
 
 
-def build_new_game(options: GameOptions, names: list[str]) -> GameState:
+def build_new_game(options: GameOptions, names: list[str],
+                   is_ai: list[bool] | None = None) -> GameState:
     state = GameState(options=options)
+    if is_ai is None:
+        is_ai = [False] * len(names)
 
     # Build players
     for i, name in enumerate(names):
@@ -40,7 +43,7 @@ def build_new_game(options: GameOptions, names: list[str]) -> GameState:
             slot       = i,
             faction_id = faction_id,
             name       = name[:9],
-            is_human   = True,
+            is_human   = not is_ai[i],
             is_active  = True,
             credits    = 100,
         )
