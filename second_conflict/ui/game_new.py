@@ -18,7 +18,7 @@ _PLANET_POOL = (
     [PlanetType.WARSHIP]   * 8 +
     [PlanetType.MISSILE]   * 3 +
     [PlanetType.TRANSPORT] * 3 +
-    [PlanetType.SCOUT]     * 2 +
+    [PlanetType.STEALTH]   * 2 +
     [PlanetType.FACTORY]   * 3 +
     [PlanetType.POPULATION]* 2 +
     [PlanetType.DEAD]      * 2 +

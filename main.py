@@ -308,12 +308,19 @@ def _do_end_turn(screen, state, map_view, side_panel, sys_panel):
     from second_conflict.engine.turn_runner import run_turn
     from second_conflict.ui.dialogs.events_dlg import EventsDialog
 
-    new_events = run_turn(state)
+    new_events, combat_records = run_turn(state)
 
+    # Show battle animation for each combat that involved the current player
     current = state.current_player()
     faction = current.faction_id if current else 0
 
-    # Split events by category for the appropriate sub-dialogs
+    if combat_records:
+        from second_conflict.ui.dialogs.combat_anim import CombatAnimation
+        for rec in combat_records:
+            if rec.attacker_faction == faction or rec.defender_faction == faction:
+                CombatAnimation(screen, rec, state).run()
+
+    # Show event log for this player
     player_events = [e for e in new_events
                      if e.player_faction == faction or e.category in ('combat', 'event')]
     if player_events:

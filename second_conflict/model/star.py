@@ -48,7 +48,7 @@ class Star:
     # Production accumulators (int16 at various offsets in the star record)
     prod_warships: int = 0         # offset +0x51=81
     prod_transports: int = 0       # offset +0x53=83
-    prod_scouts: int = 0           # offset +0x55=85
+    prod_stealth: int = 0          # offset +0x55=85  StealthShip count
     prod_stealthships: int = 0     # offset +0x57=87 (also fleet_strength aggregator)
     prod_population: int = 0       # offset +0x59=89
     prod_missiles: int = 0         # offset +0x61=97

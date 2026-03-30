@@ -60,7 +60,7 @@ class PlanetType:
     WARSHIP    = 'W'   # builds WarShips
     MISSILE    = 'M'   # builds Missiles  (cost 2 production credits)
     TRANSPORT  = 'T'   # builds TranSports (cost 3)
-    SCOUT      = 'S'   # builds Scouts    (cost 3)
+    STEALTH    = 'S'   # builds StealthShips (cost 3); used for scout missions
     FACTORY    = 'F'   # factory: accumulates credits, can grow resource value
     POPULATION = 'P'   # population world: grows pop units up to 10
     DEAD       = 'D'   # dead world: transitions to 'W' when conditions met
@@ -72,7 +72,7 @@ PRODUCTION_COST = {
     PlanetType.WARSHIP:    1,
     PlanetType.MISSILE:    2,
     PlanetType.TRANSPORT:  3,
-    PlanetType.SCOUT:      3,
+    PlanetType.STEALTH:    3,
 }
 
 # Fleet type chars used in in-transit records (+18)

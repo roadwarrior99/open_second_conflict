@@ -20,7 +20,7 @@ _TYPE_LABELS = {
     PlanetType.WARSHIP:    "WarShip",
     PlanetType.MISSILE:    "Missile",
     PlanetType.TRANSPORT:  "TranSport",
-    PlanetType.SCOUT:      "Scout",
+    PlanetType.STEALTH:    "StealthShip",
     PlanetType.FACTORY:    "Factory",
     PlanetType.POPULATION: "Population",
     PlanetType.DEAD:       "Dead",
@@ -31,7 +31,7 @@ _PROD_COST = {
     PlanetType.WARSHIP:    1,
     PlanetType.MISSILE:    2,
     PlanetType.TRANSPORT:  3,
-    PlanetType.SCOUT:      3,
+    PlanetType.STEALTH:    3,
 }
 
 

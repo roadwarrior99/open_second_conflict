@@ -61,11 +61,11 @@ def _produce(star, credits: int, state: GameState):
         star.prod_transports += count
         _add_garrison(star, star.owner_faction_id, ShipType.TRANSPORT, count, state)
 
-    elif pt == PlanetType.SCOUT:
-        # Every 3 credits → 1 Scout
+    elif pt == PlanetType.STEALTH:
+        # Every 3 credits → 1 StealthShip (used for scout missions)
         count = credits // 3
-        star.prod_scouts += count
-        _add_garrison(star, star.owner_faction_id, ShipType.SCOUT, count, state)
+        star.prod_stealth += count
+        _add_garrison(star, star.owner_faction_id, ShipType.STEALTHSHIP, count, state)
 
     elif pt == PlanetType.FACTORY:
         # Factory: accumulates resource multiplier when enough credits

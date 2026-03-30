@@ -30,7 +30,7 @@ _PROD_TYPES = [
     PlanetType.FACTORY,    # 0
     PlanetType.POPULATION, # 1
     PlanetType.WARSHIP,    # 2
-    PlanetType.SCOUT,      # 3
+    PlanetType.STEALTH,    # 3
     PlanetType.TRANSPORT,  # 4
     PlanetType.NEUTRAL,    # 5
     PlanetType.MISSILE,    # 6
@@ -41,7 +41,7 @@ _TYPE_LABELS = {
     PlanetType.WARSHIP:    "WarShip",
     PlanetType.MISSILE:    "Missile",
     PlanetType.TRANSPORT:  "TranSport",
-    PlanetType.SCOUT:      "Scout",
+    PlanetType.STEALTH:    "Stealth",
     PlanetType.FACTORY:    "Factory",
     PlanetType.POPULATION: "Pop",
     PlanetType.DEAD:       "Dead",
@@ -52,7 +52,7 @@ _TYPE_TOOLTIPS = {
     PlanetType.WARSHIP:    "WarShip — 1 WarShip per credit",
     PlanetType.MISSILE:    "Missile — 1 Missile per 2 credits",
     PlanetType.TRANSPORT:  "TranSport — 1 TranSport per 3 credits",
-    PlanetType.SCOUT:      "Scout — 1 Scout per 3 credits",
+    PlanetType.STEALTH:    "Stealth — 1 StealthShip per 3 credits; used for scout missions",
     PlanetType.FACTORY:    "Factory — resource grows each turn; also builds WarShips",
     PlanetType.POPULATION: "Population — grows up to 10 pop; each unit = 1 WarShip/turn",
     PlanetType.DEAD:       "Dead — terraforms into WarShip world after 10 turns",
@@ -65,7 +65,7 @@ _TOOLTIP_BORDER = (90, 100, 160)
 
 # In novice mode only W/T/F/N are valid selections
 _NOVICE_ALLOWED = {PlanetType.WARSHIP, PlanetType.TRANSPORT,
-                   PlanetType.FACTORY, PlanetType.NEUTRAL}
+                   PlanetType.FACTORY,  PlanetType.NEUTRAL}
 
 _BTN_W  = 30
 _BTN_H  = 22

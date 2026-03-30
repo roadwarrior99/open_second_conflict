@@ -34,7 +34,7 @@ def run_turn(state: GameState):
     fleet_transit.process(state)
 
     # Phase 2: resolve all combat triggered by arrivals
-    combat.resolve_all(state)
+    combat_records = combat.resolve_all(state)
 
     # Phase 3: production at all stars
     production.process(state)
@@ -55,7 +55,7 @@ def run_turn(state: GameState):
     # Phase 8: victory check
     _check_victory(state)
 
-    return state.event_log[log_start:]
+    return state.event_log[log_start:], combat_records
 
 
 def _run_empire_ai(state: GameState):

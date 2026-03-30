@@ -92,7 +92,7 @@ def write_bytes(state: GameState) -> bytes:
         if len(rec) > 90:
             struct.pack_into('<h', rec, 81, max(-32768, min(32767, star.prod_warships)))
             struct.pack_into('<h', rec, 83, max(-32768, min(32767, star.prod_transports)))
-            struct.pack_into('<h', rec, 85, max(-32768, min(32767, star.prod_scouts)))
+            struct.pack_into('<h', rec, 85, max(-32768, min(32767, star.prod_stealth)))
             struct.pack_into('<h', rec, 87, max(-32768, min(32767, star.prod_stealthships)))
             struct.pack_into('<h', rec, 89, max(-32768, min(32767, star.prod_population)))
 
@@ -321,7 +321,7 @@ def _parse_star_record(index: int, rec: bytes) -> Star:
     # Production accumulators at fixed offsets (int16 LE)
     prod_warships    = struct.unpack_from('<h', rec, 81)[0]  if len(rec) > 82 else 0
     prod_transports  = struct.unpack_from('<h', rec, 83)[0]  if len(rec) > 84 else 0
-    prod_scouts      = struct.unpack_from('<h', rec, 85)[0]  if len(rec) > 86 else 0
+    prod_stealth     = struct.unpack_from('<h', rec, 85)[0]  if len(rec) > 86 else 0
     prod_stealths    = struct.unpack_from('<h', rec, 87)[0]  if len(rec) > 88 else 0
     prod_population  = struct.unpack_from('<h', rec, 89)[0]  if len(rec) > 90 else 0
 
@@ -337,7 +337,7 @@ def _parse_star_record(index: int, rec: bytes) -> Star:
         garrison=garrison,
         prod_warships=prod_warships,
         prod_transports=prod_transports,
-        prod_scouts=prod_scouts,
+        prod_stealth=prod_stealth,
         prod_stealthships=prod_stealths,
         prod_population=prod_population,
         _raw=bytes(rec),
