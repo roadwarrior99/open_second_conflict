@@ -94,8 +94,10 @@ class GroundCombatDialog(BaseDialog):
             self._message     = "No invasion troops in orbit."
             self._message_col = (200, 80, 80)
             return
-        if self._star.troops <= 0:
-            self._message     = "No occupied planets to invade."
+        has_enemy = any(p.owner_faction_id != self._player_faction
+                        for p in self._star.planets)
+        if not has_enemy:
+            self._message     = "No enemy planets to invade."
             self._message_col = (200, 80, 80)
             return
         result = combat_engine.invade(self._star, self._player_faction, self._state)
@@ -159,8 +161,10 @@ class GroundCombatDialog(BaseDialog):
         y += _ROW_H + 4
 
         # Buttons
+        has_enemy   = any(p.owner_faction_id != self._player_faction
+                          for p in self._star.planets)
         can_bombard = self._star.warships > 0 and self._star.troops > 0
-        can_invade  = self._star.invasion_troops > 0 and self._star.troops > 0
+        can_invade  = self._star.invasion_troops > 0 and has_enemy
 
         btn_y = self.rect.bottom - 40
         bx = x

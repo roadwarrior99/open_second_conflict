@@ -99,6 +99,10 @@ def write_bytes(state: GameState) -> bytes:
             struct.pack_into('<h', rec, 81, max(0, min(32767, star.warships)))
             struct.pack_into('<h', rec, 83, max(0, min(32767, star.transports)))
             struct.pack_into('<h', rec, 85, max(0, min(32767, star.stealthships)))
+            # bytes 87-96: Python-only extensions (zeros in original SCW files)
+            struct.pack_into('<h', rec, 87, max(0, min(32767, star.invasion_troops)))
+            rec[89] = max(-128, min(127, star.loyalty)) & 0xFF
+            rec[90] = max(0, min(255, star.dead_counter))
             struct.pack_into('<h', rec, 97, max(0, min(32767, star.missiles)))
 
         buf[off : off + STAR_STRIDE] = rec
@@ -122,6 +126,7 @@ def write_bytes(state: GameState) -> bytes:
         struct.pack_into('<h', rec, 16, max(0, fleet.probes))
         rec[18] = ord(fleet.fleet_type_char) if fleet.fleet_type_char else ord('C')
         rec[19] = fleet.src_star & 0xFF
+        rec[20] = min(255, max(0, fleet.transports))   # transport ship count (Python ext.)
         buf[off : off + FLEET_STRIDE] = rec
 
     # ------------------------------------------------------------------
@@ -352,6 +357,10 @@ def _parse_star_record(index: int, rec: bytes) -> Star:
     warships     = max(0, struct.unpack_from('<h', rec, 81)[0]) if len(rec) > 82 else 0
     transports   = max(0, struct.unpack_from('<h', rec, 83)[0]) if len(rec) > 84 else 0
     stealthships = max(0, struct.unpack_from('<h', rec, 85)[0]) if len(rec) > 86 else 0
+    # bytes 87-96: Python-only extensions
+    invasion_troops = max(0, struct.unpack_from('<h', rec, 87)[0]) if len(rec) > 88 else 0
+    loyalty         = struct.unpack_from('b', rec, 89)[0] if len(rec) > 89 else 0
+    dead_counter    = rec[90] if len(rec) > 90 else 0
     missiles     = max(0, struct.unpack_from('<h', rec, 97)[0]) if len(rec) > 98 else 0
 
     return Star(
@@ -368,6 +377,9 @@ def _parse_star_record(index: int, rec: bytes) -> Star:
         transports=transports,
         stealthships=stealthships,
         missiles=missiles,
+        invasion_troops=invasion_troops,
+        loyalty=loyalty,
+        dead_counter=dead_counter,
         _raw=bytes(rec),
     )
 
@@ -403,6 +415,7 @@ def _parse_fleet_transit(data: bytes) -> list:
         type_byte    = rec[18]
         fleet_type   = chr(type_byte) if 32 <= type_byte < 127 else 'C'
         src_star     = rec[19]
+        transports   = rec[20] if len(rec) > 20 else 0
 
         fleets.append(FleetInTransit(
             slot=i,
@@ -412,6 +425,7 @@ def _parse_fleet_transit(data: bytes) -> list:
             fleet_type_char=fleet_type,
             src_star=src_star,
             warships=max(0, warships),
+            transports=max(0, transports),
             troop_ships=max(0, troop_ships),
             stealthships=max(0, stealthships),
             missiles=max(0, missiles),

@@ -90,6 +90,7 @@ def _deliver_fleet(fleet: FleetInTransit, star, state: GameState):
             src.transports   += fleet.transports
             src.stealthships += fleet.stealthships
 
+
     # Free the transit slot
     fleet.owner_faction_id = FREE_SLOT
     fleet.turns_remaining  = 0
