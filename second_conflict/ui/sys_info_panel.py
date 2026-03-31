@@ -285,24 +285,19 @@ class SysInfoPanel:
             surface.blit(self._font.render(line, True, (180, 220, 255)), (rx, y))
             y += _FONT_SIZE + 3
 
-        # Troop/planet summary
-        occupied = [(pi + 1, p.troops) for pi, p in enumerate(star.planets)
-                    if p.owner_faction_id != star.owner_faction_id and p.troops > 0]
-        if occupied:
-            occ_str = f"Occupied: {len(occupied)} planet(s)"
-            surface.blit(self._font.render(occ_str, True, (220, 140, 40)), (rx, y))
-            y += _FONT_SIZE + 3
-
         # Ground Combat button — placed here so it renders after (on top of) ship text
         has_enemy_planets = any(p.owner_faction_id != star.owner_faction_id
                                 for p in star.planets)
         needs_gc = is_own and (has_enemy_planets or star.invasion_troops > 0)
         if needs_gc:
-            gc_label = (
-                f"Ground Combat ({star.invasion_troops} troops)"
-                if star.invasion_troops > 0
-                else "Ground Combat"
-            )
+            occupied_count = sum(1 for p in star.planets
+                                 if p.owner_faction_id != star.owner_faction_id)
+            parts = []
+            if star.invasion_troops > 0:
+                parts.append(f"{star.invasion_troops} troops")
+            if occupied_count > 0:
+                parts.append(f"{occupied_count} occupied")
+            gc_label = "Ground Combat" + (f" ({', '.join(parts)})" if parts else "")
             gc_w = 8 * len(gc_label) + 16
             gc_rect = pygame.Rect(rx, y, gc_w, _BTN_H)
             bg = _BTN_HOV if self._hover_gc else (90, 50, 30)
