@@ -202,18 +202,88 @@ class MapView:
         return NEUTRAL_COLOUR
 
     def _draw_fleet_lines(self, surface: pygame.Surface):
-        """Draw dotted lines for in-transit fleets."""
-        for fleet in self.state.fleets_in_transit:
-            if fleet.owner_faction_id == FREE_SLOT:
+        """Draw dotted lines and fleet markers for in-transit fleets."""
+        from second_conflict.engine.distance import travel_time
+        from second_conflict.model.constants import FLEET_TYPE_MISSILE
+
+        # Group fleets by (src, dest) route so we can offset overlapping markers
+        route_counts: dict[tuple, int] = {}
+
+        active = [
+            f for f in self.state.fleets_in_transit
+            if f.owner_faction_id != FREE_SLOT
+            and 0 <= f.src_star < len(self.state.stars)
+            and 0 <= f.dest_star < len(self.state.stars)
+        ]
+
+        # Draw lines first (one per unique route)
+        drawn_routes: set[tuple] = set()
+        for fleet in active:
+            route = (fleet.src_star, fleet.dest_star)
+            if route in drawn_routes:
                 continue
-            if fleet.dest_star < 0 or fleet.dest_star >= len(self.state.stars):
-                continue
-            if fleet.src_star < 0 or fleet.src_star >= len(self.state.stars):
-                continue
+            drawn_routes.add(route)
             src_pos  = self._star_pos(self.state.stars[fleet.src_star])
             dest_pos = self._star_pos(self.state.stars[fleet.dest_star])
             colour   = self._faction_colour(fleet.owner_faction_id)
             _draw_dashed_line(surface, colour, src_pos, dest_pos, dash=6)
+
+        # Draw fleet markers on top
+        for fleet in active:
+            src_star  = self.state.stars[fleet.src_star]
+            dest_star = self.state.stars[fleet.dest_star]
+            src_pos   = self._star_pos(src_star)
+            dest_pos  = self._star_pos(dest_star)
+            colour    = self._faction_colour(fleet.owner_faction_id)
+
+            # Total travel time for this fleet type (to compute progress fraction)
+            total = travel_time(src_star, dest_star,
+                                self.state.options.sim_steps,
+                                self.state.options.map_param)
+            if fleet.fleet_type_char == FLEET_TYPE_MISSILE:
+                total = max(1, total // 2)
+
+            progress = max(0.0, min(1.0, 1.0 - fleet.turns_remaining / total))
+
+            # Screen position along the line
+            mx = src_pos[0] + progress * (dest_pos[0] - src_pos[0])
+            my = src_pos[1] + progress * (dest_pos[1] - src_pos[1])
+
+            # Perpendicular offset so stacked fleets on the same route don't overlap
+            route = (fleet.src_star, fleet.dest_star)
+            idx = route_counts.get(route, 0)
+            route_counts[route] = idx + 1
+            if idx > 0:
+                dx = dest_pos[0] - src_pos[0]
+                dy = dest_pos[1] - src_pos[1]
+                length = math.hypot(dx, dy) or 1
+                # perpendicular unit vector
+                px, py = -dy / length, dx / length
+                offset = (idx - (idx // 2) * 2) * 6 * (1 if idx % 2 == 1 else -1)
+                mx += px * offset
+                my += py * offset
+
+            cx, cy = int(mx), int(my)
+
+            # Diamond marker
+            _draw_fleet_marker(surface, colour, cx, cy, fleet.fleet_type_char)
+
+
+def _draw_fleet_marker(surface, colour, cx, cy, fleet_type: str):
+    """Draw a small marker at (cx, cy) for one in-transit fleet.
+
+    Missiles ('M') get a square; all other fleets get a diamond.
+    """
+    r = 4
+    if fleet_type == 'M':
+        # Small filled square for missiles
+        pygame.draw.rect(surface, colour, pygame.Rect(cx - 3, cy - 3, 6, 6))
+        pygame.draw.rect(surface, (255, 255, 255), pygame.Rect(cx - 3, cy - 3, 6, 6), 1)
+    else:
+        # Diamond for combat/stealth/transport fleets
+        points = [(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)]
+        pygame.draw.polygon(surface, colour, points)
+        pygame.draw.polygon(surface, (200, 200, 200), points, 1)
 
 
 def _draw_dashed_line(surface, colour, p1, p2, dash=8):
