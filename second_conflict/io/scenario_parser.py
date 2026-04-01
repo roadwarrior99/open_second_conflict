@@ -174,6 +174,7 @@ def write_bytes(state: GameState) -> bytes:
         # Attributes at +9 (27 × uint16)
         attrs = [0] * 27
         attrs[0]  = player.active_flag
+        attrs[1]  = 1 if player.is_human else 2   # 1=human, 2=AI (0=unset in old files)
         attrs[2]  = player.fleet_types_active
         attrs[3]  = player.fleet_limit
         attrs[6]  = player.budget
@@ -493,7 +494,14 @@ def _parse_players(data: bytes, options: GameOptions):
         else:
             faction_id = EMPIRE_FACTION
 
-        is_human = is_active and (i < options.num_players)
+        # attrs[1]: 1=explicitly human, 2=explicitly AI, 0=old save (use slot fallback)
+        human_flag = attrs[1]
+        if human_flag == 2:
+            is_human = False
+        elif human_flag == 1:
+            is_human = True
+        else:
+            is_human = is_active and (i < options.num_players)
 
         p = Player(
             slot=i,

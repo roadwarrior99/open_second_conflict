@@ -75,16 +75,45 @@ def _resolve_star(star: Star, state: GameState):
 def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
     """Three-round attrition between arriving ships and star's ships.
 
-    Warships and stealthships both contribute to combat strength.
+    Phase 0 — Missile barrage (before attrition rounds):
+      Attacker missiles kill defender ships 1-for-1 (warships first, then stealth).
+      Defender missiles kill attacker ships 1-for-1 (warships first, then stealth).
+      Both barrages resolve simultaneously; missiles are expended regardless.
+
+    Phase 1 — Three attrition rounds with remaining warships/stealthships.
     Losses are distributed proportionally across each ship type.
     """
-    # Combine ship types for combat strength
+    # --- Phase 0: missile barrage ---
     atk_ws = fleet.warships
     atk_ss = fleet.stealthships
-    atk    = atk_ws + atk_ss
-
     def_ws = star.warships
     def_ss = star.stealthships
+
+    atk_missiles = fleet.missiles
+    def_missiles = star.missiles
+
+    # Attacker missiles hit defender (warships first)
+    if atk_missiles > 0:
+        kill = min(atk_missiles, def_ws)
+        def_ws -= kill
+        remainder = atk_missiles - kill
+        kill2 = min(remainder, def_ss)
+        def_ss -= kill2
+
+    # Defender missiles hit attacker (warships first) — simultaneous
+    if def_missiles > 0:
+        kill = min(def_missiles, atk_ws)
+        atk_ws -= kill
+        remainder = def_missiles - kill
+        kill2 = min(remainder, atk_ss)
+        atk_ss -= kill2
+
+    # Missiles expended
+    fleet.missiles = 0
+    star.missiles  = 0
+
+    # --- Phase 1: attrition rounds ---
+    atk    = atk_ws + atk_ss
     def_   = def_ws + def_ss
 
     atk_init = atk
@@ -103,6 +132,7 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
         rounds.append((atk_hit, def_hit))
 
     # Distribute surviving ships proportionally back to each type
+    # (baseline is post-barrage counts, which may already differ from fleet/star originals)
     if atk_init > 0:
         r = atk / atk_init
         fleet.warships     = round(atk_ws * r)
@@ -116,6 +146,7 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
         star.stealthships = round(def_ss * r)
     else:
         star.warships = star.stealthships = 0
+    # Note: star.missiles already zeroed in barrage phase above
 
     rec = CombatRecord(
         star_id=star.star_id,
