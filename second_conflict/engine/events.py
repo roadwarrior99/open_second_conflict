@@ -13,6 +13,8 @@ from second_conflict.util.rng import rand
 
 def process(state: GameState):
     for player in active_players_with_stars(state):
+        if not player.is_human:
+            continue   # random events only affect human players
         if rand(100) < _threshold(state.options.difficulty):
             event_type = rand(10) + 1
             _fire_event(event_type, player, state)
