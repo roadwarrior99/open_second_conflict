@@ -28,12 +28,15 @@ class FleetViewDialog(BaseDialog):
             (i, f) for i, f in enumerate(state.fleets_in_transit)
             if f.owner_faction_id == player_faction
         ]
-        self._selected  = 0
-        self._scroll    = 0
-        self._hover_ok  = False
-        self._hover_can = False
-        self._btn_ok    = None
-        self._btn_can   = None
+        self._selected    = 0
+        self._scroll      = 0
+        self._hover_ok    = False
+        self._hover_can   = False
+        self._hover_recall = False
+        self._btn_ok      = None
+        self._btn_can     = None
+        self._btn_recall  = None
+        self._recall_msg  = ""
 
     # ------------------------------------------------------------------
 
@@ -41,8 +44,9 @@ class FleetViewDialog(BaseDialog):
         super().handle_event(event)
         visible = self._visible_count()
         if event.type == pygame.MOUSEMOTION:
-            self._hover_ok  = self._btn_ok  and self._btn_ok.collidepoint(event.pos)
-            self._hover_can = self._btn_can and self._btn_can.collidepoint(event.pos)
+            self._hover_ok     = self._btn_ok     and self._btn_ok.collidepoint(event.pos)
+            self._hover_can    = self._btn_can    and self._btn_can.collidepoint(event.pos)
+            self._hover_recall = self._btn_recall and self._btn_recall.collidepoint(event.pos)
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
                 if self._btn_ok  and self._btn_ok.collidepoint(event.pos):
@@ -50,6 +54,9 @@ class FleetViewDialog(BaseDialog):
                     return
                 if self._btn_can and self._btn_can.collidepoint(event.pos):
                     self.close(None)
+                    return
+                if self._btn_recall and self._btn_recall.collidepoint(event.pos):
+                    self._do_recall()
                     return
                 # Row click
                 cr = self._content_rect()
@@ -128,22 +135,27 @@ class FleetViewDialog(BaseDialog):
                 )
                 surface.blit(note, (x, y))
 
-        # Totals summary line
-        total_w = sum(f.warships    for _, f in self._fleets)
-        total_t = sum(f.troop_ships for _, f in self._fleets)
-        total_s = sum(f.scouts      for _, f in self._fleets)
-        totals = self._text(
-            f"Totals — W:{total_w}  T:{total_t}  S:{total_s}",
-            (160, 200, 160)
-        )
-        surface.blit(totals, (cr.x, self.rect.bottom - 60))
+        # Totals / recall feedback line
+        if self._recall_msg:
+            bottom_text = self._text(self._recall_msg, (180, 220, 180))
+        else:
+            total_w = sum(f.warships    for _, f in self._fleets)
+            total_t = sum(f.troop_ships for _, f in self._fleets)
+            total_s = sum(f.scouts      for _, f in self._fleets)
+            bottom_text = self._text(
+                f"Totals — W:{total_w}  T:{total_t}  S:{total_s}",
+                (160, 200, 160)
+            )
+        surface.blit(bottom_text, (cr.x, self.rect.bottom - 60))
 
         # Buttons
         btn_y = self.rect.bottom - 38
-        self._btn_ok  = pygame.Rect(self.rect.centerx - 100, btn_y, 90, 28)
-        self._btn_can = pygame.Rect(self.rect.centerx + 10,  btn_y, 90, 28)
-        self._draw_button(surface, self._btn_ok,  "Go To",  self._hover_ok)
-        self._draw_button(surface, self._btn_can, "Close",  self._hover_can)
+        self._btn_ok     = pygame.Rect(self.rect.centerx - 150, btn_y, 80, 28)
+        self._btn_recall = pygame.Rect(self.rect.centerx - 60,  btn_y, 90, 28)
+        self._btn_can    = pygame.Rect(self.rect.centerx + 40,  btn_y, 80, 28)
+        self._draw_button(surface, self._btn_ok,     "Go To",  self._hover_ok)
+        self._draw_button(surface, self._btn_recall, "Recall", self._hover_recall)
+        self._draw_button(surface, self._btn_can,    "Close",  self._hover_can)
 
     # ------------------------------------------------------------------
 
@@ -153,6 +165,18 @@ class FleetViewDialog(BaseDialog):
             self.close(fleet.dest_star)
         else:
             self.close(None)
+
+    def _do_recall(self):
+        if not self._fleets or self._selected >= len(self._fleets):
+            return
+        from second_conflict.engine.fleet_transit import recall_fleet
+        _, fleet = self._fleets[self._selected]
+        ok = recall_fleet(self.state, fleet)
+        if ok:
+            self._recall_msg = (f"Fleet recalled — now heading to star {fleet.dest_star} "
+                                f"({fleet.turns_remaining} turns)")
+        else:
+            self._recall_msg = "Missiles cannot be recalled."
 
     def _visible_count(self) -> int:
         cr = self._content_rect()

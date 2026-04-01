@@ -105,6 +105,28 @@ def _deliver_fleet(fleet: FleetInTransit, star, state: GameState):
     return rec
 
 
+def recall_fleet(state: GameState, fleet: FleetInTransit) -> bool:
+    """Reverse a fleet's direction mid-transit.
+
+    Swaps src/dest and sets turns_remaining to the turns already spent,
+    so the fleet returns home in the same time it has been travelling.
+    Returns False if the fleet cannot be recalled (missiles, already arrived).
+    """
+    from second_conflict.engine.distance import travel_time
+
+    if fleet.fleet_type_char == FLEET_TYPE_MISSILE:
+        return False   # missiles cannot be recalled
+
+    src  = state.stars[fleet.src_star]
+    dest = state.stars[fleet.dest_star]
+    total = travel_time(src, dest, state.options.sim_steps, state.options.map_param)
+    turns_spent = total - fleet.turns_remaining
+
+    fleet.src_star, fleet.dest_star = fleet.dest_star, fleet.src_star
+    fleet.turns_remaining = max(1, turns_spent)
+    return True
+
+
 def dispatch_fleet(state: GameState, src_star_idx: int, dest_star_idx: int,
                    owner_faction: int, warships: int = 0,
                    transports: int = 0, troop_ships: int = 0,
