@@ -206,37 +206,23 @@ class MapView:
         from second_conflict.engine.distance import travel_time
         from second_conflict.model.constants import FLEET_TYPE_MISSILE
 
-        # Group fleets by (src, dest) route so we can offset overlapping markers
-        route_counts: dict[tuple, int] = {}
-
-        active = [
-            f for f in self.state.fleets_in_transit
-            if f.owner_faction_id != FREE_SLOT
-            and 0 <= f.src_star < len(self.state.stars)
-            and 0 <= f.dest_star < len(self.state.stars)
-        ]
-
-        # Draw lines first (one per unique route)
-        drawn_routes: set[tuple] = set()
-        for fleet in active:
-            route = (fleet.src_star, fleet.dest_star)
-            if route in drawn_routes:
+        for fleet in self.state.fleets_in_transit:
+            if fleet.owner_faction_id == FREE_SLOT:
                 continue
-            drawn_routes.add(route)
-            src_pos  = self._star_pos(self.state.stars[fleet.src_star])
-            dest_pos = self._star_pos(self.state.stars[fleet.dest_star])
+            if not (0 <= fleet.src_star < len(self.state.stars)):
+                continue
+            if not (0 <= fleet.dest_star < len(self.state.stars)):
+                continue
+
+            src_star = self.state.stars[fleet.src_star]
+            dest_star = self.state.stars[fleet.dest_star]
+            src_pos  = self._star_pos(src_star)
+            dest_pos = self._star_pos(dest_star)
             colour   = self._faction_colour(fleet.owner_faction_id)
+
             _draw_dashed_line(surface, colour, src_pos, dest_pos, dash=6)
 
-        # Draw fleet markers on top
-        for fleet in active:
-            src_star  = self.state.stars[fleet.src_star]
-            dest_star = self.state.stars[fleet.dest_star]
-            src_pos   = self._star_pos(src_star)
-            dest_pos  = self._star_pos(dest_star)
-            colour    = self._faction_colour(fleet.owner_faction_id)
-
-            # Total travel time for this fleet type (to compute progress fraction)
+            # Total travel time for this fleet type
             total = travel_time(src_star, dest_star,
                                 self.state.options.sim_steps,
                                 self.state.options.map_param)
@@ -245,45 +231,50 @@ class MapView:
 
             progress = max(0.0, min(1.0, 1.0 - fleet.turns_remaining / total))
 
-            # Screen position along the line
             mx = src_pos[0] + progress * (dest_pos[0] - src_pos[0])
             my = src_pos[1] + progress * (dest_pos[1] - src_pos[1])
 
-            # Perpendicular offset so stacked fleets on the same route don't overlap
-            route = (fleet.src_star, fleet.dest_star)
-            idx = route_counts.get(route, 0)
-            route_counts[route] = idx + 1
-            if idx > 0:
-                dx = dest_pos[0] - src_pos[0]
-                dy = dest_pos[1] - src_pos[1]
-                length = math.hypot(dx, dy) or 1
-                # perpendicular unit vector
-                px, py = -dy / length, dx / length
-                offset = (idx - (idx // 2) * 2) * 6 * (1 if idx % 2 == 1 else -1)
-                mx += px * offset
-                my += py * offset
+            # Direction vector toward destination (for arrowhead)
+            dx = dest_pos[0] - src_pos[0]
+            dy = dest_pos[1] - src_pos[1]
+            length = math.hypot(dx, dy) or 1
+            ux, uy = dx / length, dy / length
 
-            cx, cy = int(mx), int(my)
-
-            # Diamond marker
-            _draw_fleet_marker(surface, colour, cx, cy, fleet.fleet_type_char)
+            _draw_fleet_marker(surface, colour, int(mx), int(my),
+                               fleet.fleet_type_char, ux, uy)
 
 
-def _draw_fleet_marker(surface, colour, cx, cy, fleet_type: str):
-    """Draw a small marker at (cx, cy) for one in-transit fleet.
+def _draw_fleet_marker(surface, colour, cx, cy, fleet_type: str,
+                       ux: float = 1.0, uy: float = 0.0):
+    """Draw a marker + direction arrowhead at (cx, cy).
 
-    Missiles ('M') get a square; all other fleets get a diamond.
+    ux, uy — unit vector pointing toward destination.
+    Missiles ('M') get a square body; all others get a diamond.
+    The arrowhead is a small triangle ahead of the marker.
     """
     r = 4
     if fleet_type == 'M':
-        # Small filled square for missiles
         pygame.draw.rect(surface, colour, pygame.Rect(cx - 3, cy - 3, 6, 6))
         pygame.draw.rect(surface, (255, 255, 255), pygame.Rect(cx - 3, cy - 3, 6, 6), 1)
     else:
-        # Diamond for combat/stealth/transport fleets
         points = [(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)]
         pygame.draw.polygon(surface, colour, points)
         pygame.draw.polygon(surface, (200, 200, 200), points, 1)
+
+    # Arrowhead: small triangle offset ahead of the marker body
+    tip_x = cx + ux * (r + 5)
+    tip_y = cy + uy * (r + 5)
+    # perpendicular for arrow wings
+    px, py = -uy, ux
+    wing = 3
+    base_x = cx + ux * (r + 1)
+    base_y = cy + uy * (r + 1)
+    arrow = [
+        (int(tip_x), int(tip_y)),
+        (int(base_x + px * wing), int(base_y + py * wing)),
+        (int(base_x - px * wing), int(base_y - py * wing)),
+    ]
+    pygame.draw.polygon(surface, (255, 255, 255), arrow)
 
 
 def _draw_dashed_line(surface, colour, p1, p2, dash=8):
