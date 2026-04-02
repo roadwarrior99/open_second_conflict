@@ -6,14 +6,14 @@ Usage:
 Layout
 ------
   +------------------+--------+
+  |  Menu bar (top, MENU_H px)                           |
+  +------------------+--------+
   |                  |        |
   |   Galaxy Map     | Side   |
   |   (MAP_W px)     | Panel  |
   |                  |        |
   +------------------+--------+
   |  System Info Strip (full width, SYS_H px)            |
-  +------------------+--------+
-  |  Menu bar (top, MENU_H px)                           |
   +------------------------------------------------------+
 
 Menu bar
@@ -35,7 +35,7 @@ PANEL_W  = SCREEN_W - MAP_W
 SYS_H    = 110         # system-info strip below map
 MAP_H    = SCREEN_H - MENU_H - SYS_H
 FPS      = 30
-TITLE    = "Second Conflict"
+TITLE    = "Open Second Conflict"
 
 BG_COLOUR   = (8, 8, 16)
 MENU_BG     = (18, 22, 36)
