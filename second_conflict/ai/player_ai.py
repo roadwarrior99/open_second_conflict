@@ -28,6 +28,10 @@ def process(player, state: GameState):
     if not my_stars:
         return
 
+    # Ground combat: bombard and invade occupied planets on all owned stars
+    for star in my_stars:
+        _do_ground_combat(player, star, state)
+
     for i, src in enumerate(state.stars):
         if src.owner_faction_id != player.faction_id:
             continue
@@ -97,3 +101,24 @@ def _has_outgoing_fleet(src_idx: int, faction_id: int, state: GameState) -> bool
         f.owner_faction_id == faction_id and f.src_star == src_idx
         for f in state.fleets_in_transit
     )
+
+
+def _do_ground_combat(player, star, state: GameState):
+    """Bombard then invade any planets not owned by this player."""
+    from second_conflict.engine import combat as combat_engine
+
+    has_enemy = any(p.owner_faction_id != player.faction_id for p in star.planets)
+    if not has_enemy:
+        return
+
+    # Bombard until all enemy troops are gone or warships run out
+    for _ in range(10):
+        if star.warships <= 0 or star.troops <= 0:
+            break
+        combat_engine.bombard(star, player.faction_id, state)
+
+    # Invade with any troops in orbit
+    if star.invasion_troops > 0:
+        has_enemy = any(p.owner_faction_id != player.faction_id for p in star.planets)
+        if has_enemy:
+            combat_engine.invade(star, player.faction_id, state)

@@ -60,7 +60,7 @@ class FleetViewDialog(BaseDialog):
                     return
                 # Row click
                 cr = self._content_rect()
-                row_y = cr.y + _ROW_H * 2  # after header + divider
+                row_y = cr.y + _ROW_H + 2  # after header row + 2px divider line
                 for vi in range(visible):
                     fi = self._scroll + vi
                     if fi >= len(self._fleets):
