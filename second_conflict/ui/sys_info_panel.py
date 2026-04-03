@@ -306,9 +306,10 @@ class SysInfoPanel:
             y += _FONT_SIZE + 3
 
         # Ground Combat button — placed here so it renders after (on top of) ship text
-        has_enemy_planets = any(p.owner_faction_id != star.owner_faction_id
-                                for p in star.planets)
-        needs_gc = is_own and (has_enemy_planets or star.invasion_troops > 0)
+        has_enemy_planets = any(planet.owner_faction_id != star.owner_faction_id
+                                for planet in star.planets)
+
+        needs_gc = is_own and (has_enemy_planets) #or star.invasion_troops > 0
         if needs_gc:
             occupied_count = sum(1 for p in star.planets
                                  if p.owner_faction_id != star.owner_faction_id)
