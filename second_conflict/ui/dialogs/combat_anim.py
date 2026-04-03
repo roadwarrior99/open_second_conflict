@@ -237,8 +237,7 @@ class CombatAnimation(BaseDialog):
         stats_y = ba_y + ba_h + 8
         atk_losses = rec.atk_initial - rec.atk_final
         def_losses = rec.def_initial - rec.def_final
-        stats = (f"WarShips:  "
-                 f"Attacker {rec.atk_initial} → {rec.atk_final}  "
+        stats = (f"Attacker {rec.atk_initial} → {rec.atk_final}  "
                  f"(lost {atk_losses})     "
                  f"Defender {rec.def_initial} → {rec.def_final}  "
                  f"(lost {def_losses})")
@@ -249,7 +248,7 @@ class CombatAnimation(BaseDialog):
         if phase_name != 'result' and phase_name != 'scatter':
             rnum = int(phase_name[1]) + 1
             round_s = self._text(f"Round {rnum} of {len(rec.rounds)}", (140, 140, 180))
-            surface.blit(round_s, (cr.right - round_s.get_width(), stats_y))
+            surface.blit(round_s, (cr.right - round_s.get_width(), stats_y + 30))
 
         # Outcome text (result phase only)
         if phase_name == 'result':
