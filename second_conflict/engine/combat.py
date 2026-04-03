@@ -94,7 +94,7 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
     Phase 1 — Three attrition rounds with remaining warships/stealthships.
     Losses are distributed proportionally across each ship type.
     """
-    # --- Phase 0: missile barrage ---
+
     atk_ws = fleet.warships
     atk_ss = fleet.stealthships
     def_ws = star.warships
@@ -102,9 +102,12 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
 
     atk_missiles = fleet.missiles
     def_missiles = star.missiles
-
+    logger.debug(f"Attacker: {atk_ws} warships, {atk_ss} stealth, {atk_missiles} missiles")
+    logger.debug(f"Defender: {def_ws} warships, {def_ss} stealth, {def_missiles} missiles")
+    # --- Phase 0: missile barrage ---
     # Attacker missiles hit defender (warships first)
     if atk_missiles > 0:
+        logger.debug(f"Missiles: {atk_missiles} atk")
         kill = min(atk_missiles, def_ws)
         def_ws -= kill
         remainder = atk_missiles - kill
@@ -113,6 +116,7 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
 
     # Defender missiles hit attacker (warships first) — simultaneous
     if def_missiles > 0:
+        logger.debug(f"Missiles: {def_missiles} def")
         kill = min(def_missiles, atk_ws)
         atk_ws -= kill
         remainder = def_missiles - kill
@@ -124,39 +128,46 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
     star.missiles  = 0
 
     # --- Phase 1: attrition rounds ---
-    atk    = atk_ws + atk_ss
-    def_   = def_ws + def_ss
+    atk_firepower    = atk_ws + atk_ss
+    def_firepower   = def_ws + def_ss
 
-    atk_init = atk
-    def_init = def_
+    logger.debug(f"Attacker: {atk_firepower} firepower")
+    logger.debug(f"Defender: {def_firepower} firepower")
+
+    atk_init = atk_firepower
+    def_init = def_firepower
 
     rounds = []
     for _ in range(3):
-        if atk <= 0 or def_ <= 0:
+        if atk_firepower <= 0 or def_firepower <= 0:
             break
-        atk_hit = rand(5) + def_ // 3
-        atk_hit = min(atk_hit, atk)
-        def_hit = rand(5) + atk // 3
-        def_hit = min(def_hit, def_)
-        atk  = max(0, atk  - atk_hit)
-        def_ = max(0, def_ - def_hit)
+        atk_hit = rand(5) + def_firepower // 3
+        atk_hit = min(atk_hit, atk_firepower)
+
+        def_hit = rand(5) + atk_firepower // 3
+        def_hit = min(def_hit, def_firepower)
+        logger.debug(f"Attrition: {atk_hit} atk, {def_firepower - atk_hit} def")
+
+        atk_firepower  = max(0, atk_firepower  - atk_hit)
+        def_firepower = max(0, def_firepower - def_hit)
         rounds.append((atk_hit, def_hit))
 
     # Distribute surviving ships proportionally back to each type
     # (baseline is post-barrage counts, which may already differ from fleet/star originals)
     if atk_init > 0:
-        r = atk / atk_init
+        r = atk_firepower / atk_init
         fleet.warships     = round(atk_ws * r)
         fleet.stealthships = round(atk_ss * r)
     else:
         fleet.warships = fleet.stealthships = 0
 
     if def_init > 0:
-        r = def_ / def_init
+        r = def_firepower / def_init
         star.warships     = round(def_ws * r)
         star.stealthships = round(def_ss * r)
     else:
         star.warships = star.stealthships = 0
+    logger.debug(f"Fleet: {fleet.warships} warships, {fleet.stealthships} stealth")
     # Note: star.missiles already zeroed in barrage phase above
 
     rec = CombatRecord(
@@ -168,12 +179,14 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
         atk_initial=atk_init,
         def_initial=def_init,
         rounds=rounds,
-        atk_final=atk,
-        def_final=def_,
+        atk_final=atk_firepower,
+        def_final=def_firepower,
     )
 
-    atk_losses = atk_init - atk
-    def_losses = def_init - def_
+    atk_losses = atk_init - atk_firepower
+    def_losses = def_init - def_firepower
+    logger.debug(f"Attacker: {atk_losses} losses, {atk_init} initial")
+    logger.debug(f"Defender: {def_losses} losses, {def_init} initial")
     state.add_event('combat', fleet.owner_faction_id,
                     f"Combat at star {star.star_id}: attacker lost {atk_losses}, "
                     f"defender lost {def_losses}")
@@ -181,7 +194,7 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
                     f"Combat at star {star.star_id}: attacker lost {atk_losses}, "
                     f"defender lost {def_losses}")
 
-    if def_ == 0:
+    if def_firepower == 0:
         # Defender eliminated — attacker takes the star
         old_owner = star.owner_faction_id
         star.owner_faction_id  = fleet.owner_faction_id
@@ -194,9 +207,11 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
         state.add_event('combat', fleet.owner_faction_id,
                         f"Star {star.star_id} captured from {_faction_name(old_owner, state)}! "
                         f"Use Ground Combat to clear occupied planets.")
-    elif atk == 0:
+        logger.debug(f"Star {star.star_id} captured from {_faction_name(old_owner, state)}!")
+    elif atk_firepower == 0:
         # Attacker destroyed: defender holds
         rec.winner_faction = star.owner_faction_id
+        logger.debug(f"Star {star.star_id} successfully repelled attack!")
     else:
         # Both sides survived: attacker repelled — ships return to source star
         # (fleet.warships / stealthships left at post-combat values;
