@@ -22,6 +22,14 @@ from second_conflict.util.rng import rand
 _BOMBARD_RATE = 2   # troops killed per warship per bombardment action
 
 
+def _faction_name(faction_id: int, state: GameState) -> str:
+    """Return a human-readable name for a faction (player name or 'The Empire')."""
+    if faction_id == EMPIRE_FACTION:
+        return "The Empire"
+    p = state.player_for_faction(faction_id)
+    return p.name if p else f"Faction {faction_id:02x}"
+
+
 @dataclass
 class CombatRecord:
     """Per-battle data captured for the COMBATWNDPROC animation."""
@@ -181,7 +189,7 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
         fleet.warships = fleet.stealthships = 0
         rec.winner_faction = fleet.owner_faction_id
         state.add_event('combat', fleet.owner_faction_id,
-                        f"Star {star.star_id} captured from 0x{old_owner:02x}! "
+                        f"Star {star.star_id} captured from {_faction_name(old_owner, state)}! "
                         f"Use Ground Combat to clear occupied planets.")
     elif atk == 0:
         # Attacker destroyed: defender holds
@@ -273,7 +281,7 @@ def invade(star: Star, attacker_faction: int, state: GameState) -> dict:
             planet.morale = 1
             taken += 1
             state.add_event('combat', attacker_faction,
-                            f"Star {star.star_id} planet taken from 0x{old_owner:02x}!")
+                            f"Star {star.star_id} planet taken from {_faction_name(old_owner, state)}!")
         else:
             planet.troops = max(0, planet.troops - attacking // 2)
             state.add_event('combat', star.owner_faction_id,

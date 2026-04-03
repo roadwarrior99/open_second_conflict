@@ -85,7 +85,6 @@ Second Conflict is a turn-based 4X space strategy game for up to 10 players (hum
 | StealthShip | 3 credits | 1× |
 | TranSport | 3 credits | 1× |
 | Missile | 2 credits | 2× (arrives in half the turns) |
-| Scout | — | 1.5× |
 
 ### Production formula
 

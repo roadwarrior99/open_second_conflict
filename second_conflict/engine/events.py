@@ -113,9 +113,11 @@ def _espionage(player, state: GameState):
     if not enemy_fleets:
         return
     fleet = enemy_fleets[rand(len(enemy_fleets))]
+    enemy = state.player_for_faction(fleet.owner_faction_id)
+    enemy_name = enemy.name if enemy else f"Faction {fleet.owner_faction_id:02x}"
     state.add_event('scout', player.faction_id,
-                    f"Intelligence: enemy fleet (0x{fleet.owner_faction_id:02x}) "
-                    f"en route to star {fleet.dest_star}, {fleet.turns_remaining} turns away.")
+                    f"Intelligence: {enemy_name}'s fleet en route to star {fleet.dest_star}, "
+                    f"{fleet.turns_remaining} turns away.")
 
 
 def _pirate_raid(player, my_stars, state: GameState):
