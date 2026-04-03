@@ -23,6 +23,34 @@ _FONT_TITLE_SIZE = 16
 _FONT_BODY_SIZE  = 13
 _BTN_H           = 36
 _BTN_MARGIN      = 14
+_LOG_LINE_H      = 14   # px per wrapped line in the event log
+
+# Per-category text colours for the event log
+_CAT_COL = {
+    'combat':   (220,  80,  80),
+    'revolt':   (220, 150,  50),
+    'scout':    ( 80, 200, 220),
+    'reinforce':( 80, 200, 120),
+    'event':    (200, 200,  80),
+}
+
+
+def _wrap_text(text: str, font: pygame.font.Font, max_w: int) -> list[str]:
+    """Word-wrap *text* to fit within *max_w* pixels. Returns list of lines."""
+    words  = text.split()
+    lines  = []
+    current = ''
+    for word in words:
+        candidate = (current + ' ' + word).strip()
+        if font.size(candidate)[0] <= max_w:
+            current = candidate
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines or ['']
 
 
 class SidePanel:
@@ -31,12 +59,16 @@ class SidePanel:
         self.state = state
         self._font_title = None
         self._font_body  = None
+        self._font_log   = None
         self._btn_rect: pygame.Rect | None = None
+        self._log_rect:  pygame.Rect | None = None
         self._on_end_turn = None
         self._hovering_btn = False
+        self._log_scroll   = 0   # number of lines scrolled from top
 
     def set_state(self, state: GameState):
         self.state = state
+        self._log_scroll = 0
 
     def set_end_turn_callback(self, cb):
         self._on_end_turn = cb
@@ -55,6 +87,19 @@ class SidePanel:
             if self._btn_rect and self._btn_rect.collidepoint(event.pos):
                 if self._on_end_turn:
                     self._on_end_turn()
+        # Mouse-wheel scroll inside the event log area
+        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEWHEEL):
+            over_log = self._log_rect and self._log_rect.collidepoint(
+                event.pos if event.type == pygame.MOUSEBUTTONDOWN else
+                pygame.mouse.get_pos()
+            )
+            if over_log:
+                if event.type == pygame.MOUSEWHEEL:
+                    self._log_scroll = max(0, self._log_scroll - event.y)
+                elif event.button == 4:
+                    self._log_scroll = max(0, self._log_scroll - 1)
+                elif event.button == 5:
+                    self._log_scroll += 1
 
     # ------------------------------------------------------------------
     # Rendering
@@ -64,6 +109,7 @@ class SidePanel:
         if self._font_title is None:
             self._font_title = pygame.font.SysFont('monospace', _FONT_TITLE_SIZE, bold=True)
             self._font_body  = pygame.font.SysFont('monospace', _FONT_BODY_SIZE)
+            self._font_log   = pygame.font.SysFont('monospace', 11)
 
         surface.fill(PANEL_BG, self.rect)
 
@@ -141,8 +187,16 @@ class SidePanel:
                 surface.blit(surf, (x, y))
                 y += 16
 
+        # ---- Event log ----
+        btn_y    = self.rect.bottom - _BTN_H - _BTN_MARGIN
+        log_top  = y + 6
+        log_h    = btn_y - log_top - 8
+        self._log_rect = pygame.Rect(x, log_top, w, log_h)
+
+        if log_h > _LOG_LINE_H * 2:
+            self._draw_event_log(surface, x, log_top, w, log_h)
+
         # "End Turn" button pinned to bottom
-        btn_y = self.rect.bottom - _BTN_H - _BTN_MARGIN
         self._btn_rect = pygame.Rect(x, btn_y, w, _BTN_H)
         btn_col = BTN_HOVER if self._hovering_btn else BTN_NORMAL
         pygame.draw.rect(surface, btn_col, self._btn_rect, border_radius=4)
@@ -150,3 +204,59 @@ class SidePanel:
         bx = self._btn_rect.centerx - btn_label.get_width() // 2
         by = self._btn_rect.centery - btn_label.get_height() // 2
         surface.blit(btn_label, (bx, by))
+
+    # ------------------------------------------------------------------
+    # Event log helpers
+    # ------------------------------------------------------------------
+
+    def _draw_event_log(self, surface: pygame.Surface,
+                        x: int, y: int, w: int, h: int):
+        font = self._font_log
+
+        # Header
+        hdr = self._font_body.render("Events", True, LABEL_COL)
+        surface.blit(hdr, (x, y))
+        y  += 16
+        h  -= 16
+        pygame.draw.line(surface, DIVIDER, (x, y), (x + w, y))
+        y  += 4
+        h  -= 4
+
+        # Build wrapped lines for the current player's events, newest-first
+        player  = self.state.current_player()
+        faction = player.faction_id if player else -1
+        events  = list(reversed(self.state.events_for_faction(faction)))
+
+        lines: list[tuple[str, tuple]] = []   # (text, colour)
+        for ev in events:
+            colour = _CAT_COL.get(ev.category, TEXT_COL)
+            prefix = f"T{ev.turn} "
+            wrapped = _wrap_text(ev.text, font, w - 4)
+            for i, segment in enumerate(wrapped):
+                lines.append((prefix + segment if i == 0 else "    " + segment, colour))
+
+        # Clamp scroll
+        visible  = h // _LOG_LINE_H
+        max_scroll = max(0, len(lines) - visible)
+        self._log_scroll = min(self._log_scroll, max_scroll)
+
+        # Clip drawing to the log area so text never bleeds outside
+        clip_rect = pygame.Rect(x, y, w, h)
+        old_clip  = surface.get_clip()
+        surface.set_clip(clip_rect)
+
+        ry = y
+        for line, colour in lines[self._log_scroll : self._log_scroll + visible + 1]:
+            surf = font.render(line, True, colour)
+            surface.blit(surf, (x + 2, ry))
+            ry += _LOG_LINE_H
+
+        surface.set_clip(old_clip)
+
+        # Scroll-bar if content overflows
+        if len(lines) > visible:
+            bar_x    = x + w - 3
+            bar_h    = max(12, h * visible // len(lines))
+            bar_y    = y + (h - bar_h) * self._log_scroll // max(1, max_scroll)
+            pygame.draw.rect(surface, DIVIDER,   (bar_x, y, 3, h))
+            pygame.draw.rect(surface, LABEL_COL, (bar_x, bar_y, 3, bar_h))
