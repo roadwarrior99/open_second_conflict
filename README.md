@@ -156,6 +156,41 @@ For a deeper architectural walkthrough, see [structure.md](structure.md).
 
 ---
 
+## Building Installers
+
+Installer scripts live in `build/`. PyInstaller is installed automatically if it isn't already present.
+
+### Windows
+
+Requirements: Python 3.11+, optionally [Inno Setup 6](https://jrsoftware.org/isdl.php) for a proper `.exe` installer.
+
+```bat
+build\build_windows.bat
+```
+
+- Runs PyInstaller → produces `dist\Second Conflict\` (standalone folder)
+- If Inno Setup is found, also compiles `build\Output\SecondConflict-Setup.exe`
+- Without Inno Setup the folder in `dist\` can be zipped and distributed as-is
+
+### macOS
+
+Requirements: Python 3.11+, Xcode Command Line Tools. Optionally `brew install create-dmg` for a styled drag-to-install DMG.
+
+```bash
+bash build/build_mac.sh
+```
+
+- Runs PyInstaller → produces `dist/Second Conflict.app`
+- Ad-hoc code-signs the bundle (no paid Developer ID required)
+- Builds `dist/SecondConflict-macOS.dmg`
+- First-time users without a Developer ID certificate must right-click → Open to bypass Gatekeeper
+
+### Icons
+
+Place `build/icon.ico` (Windows) and `build/icon.icns` (macOS) before building to embed a custom icon. If the files are absent the build still succeeds using the default pygame icon.
+
+---
+
 ## Testing
 
 ```bash

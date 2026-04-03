@@ -1,1 +1,4 @@
 pygame>=2.0
+
+# Build / packaging (optional — only needed to produce installers)
+pyinstaller>=6.0
