@@ -83,27 +83,19 @@ def _deliver_fleet(fleet: FleetInTransit, star, state: GameState):
             star.missiles   += fleet.missiles
             if fleet.troop_ships > 0:
                 star.invasion_troops += fleet.troop_ships
-        # Repelled: surviving ships return to the source star
+        # Repelled: send surviving ships back to the source star over time
         elif fleet.warships > 0 or fleet.stealthships > 0:
-            src = state.stars[fleet.src_star]
-            logger.debug(f"Star {star.star_id} repelled fleet {fleet.owner_faction_id}!")
-            logger.debug(f"  {src.warships} system ships, fleet ships {fleet.warships}")
-            logger.debug(f"  {src.transports} transports, fleet ships {fleet.transports}")
-            logger.debug(f"  {src.stealthships} stealth ships, fleet ships {fleet.stealthships}")
-            logger.debug(f"  {src.invasion_troops} planatary troops, fleet troops {fleet.troop_ships}")
+            from second_conflict.engine.distance import travel_time
+            src  = state.stars[fleet.src_star]
+            dest = state.stars[fleet.dest_star]
+            fleet.src_star, fleet.dest_star = fleet.dest_star, fleet.src_star
+            fleet.turns_remaining = travel_time(
+                dest, src, state.options.sim_steps, state.options.map_param
+            )
+            fleet.missiles    = 0   # already expended
+            return rec
 
-
-
-            src.warships     += fleet.warships
-            src.transports   += fleet.transports
-
-            src.stealthships += fleet.stealthships
-
-            src.invasion_troops  += fleet.troop_ships
-
-
-
-    # Free the transit slot
+    # Free the transit slot (friendly arrival, attacker destroyed, or captured)
     fleet.owner_faction_id = FREE_SLOT
     fleet.turns_remaining  = 0
     fleet.warships     = 0
@@ -113,11 +105,6 @@ def _deliver_fleet(fleet: FleetInTransit, star, state: GameState):
     fleet.missiles     = 0
     fleet.scouts       = 0
     fleet.probes       = 0
-    src = state.stars[fleet.src_star]
-    logger.debug(f"  {src.warships} system ships, fleet ships {fleet.warships}")
-    logger.debug(f"  {src.transports} transports, fleet ships {fleet.transports}")
-    logger.debug(f"  {src.stealthships} stealth ships, fleet ships {fleet.stealthships}")
-    logger.debug(f"  {src.invasion_troops} planatary troops, fleet troops {fleet.troop_ships}")
     return rec
 
 
