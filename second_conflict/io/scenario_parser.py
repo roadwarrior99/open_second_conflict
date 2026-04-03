@@ -50,6 +50,7 @@ def write_bytes(state: GameState) -> bytes:
     buf[7]  = o.sim_steps
     buf[8]  = o.state_flags & 0xFF
     buf[10] = o.difficulty
+    struct.pack_into('<H', buf, 11, max(0, min(65535, state.turn)))
     struct.pack_into('<H', buf, 16, o.version)
 
     # ------------------------------------------------------------------
@@ -242,6 +243,10 @@ def parse_bytes(data: bytes) -> GameState:
         empire_orders=empire_orders,
         faction_ids=faction_ids,
     )
+
+    # Read turn number from header bytes 11-12 (Python extension; 0 in original files)
+    raw_turn = struct.unpack_from('<H', data, OFFSET_HEADER + 11)[0]
+    state.turn = max(1, raw_turn) if raw_turn > 0 else 1
 
     # Preserve unknown sections verbatim for round-trip saves
     state._raw_unknown_a = data[OFFSET_UNKNOWN_A : OFFSET_UNKNOWN_A + SIZE_UNKNOWN_A]

@@ -397,11 +397,26 @@ def _save_action(screen, state):
     path = _simple_input_dialog(screen, "Save to file:", "savegame.sav")
     if not path:
         return
+    # In dev mode, allow overriding the turn number stored in the file
+    save_turn = state.turn
+    if state.options.dev_mode:
+        turn_str = _simple_input_dialog(screen, "Turn number to save:",
+                                        str(state.turn))
+        if not turn_str:
+            return
+        try:
+            save_turn = int(turn_str)
+        except ValueError:
+            pass
+    old_turn = state.turn
+    state.turn = save_turn
     try:
         from second_conflict.io.scenario_parser import write_file
         write_file(state, path)
     except Exception as e:
         print(f"Save error: {e}")
+    finally:
+        state.turn = old_turn
 
 def _show_fleets(screen, state, map_view):
     current = state.current_player()
