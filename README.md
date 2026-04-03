@@ -15,6 +15,7 @@ Game mechanics are faithfully translated from the original `SCW.EXE` binary via 
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+
 ```
 
 ---
@@ -23,13 +24,16 @@ pip install -r requirements.txt
 
 ```bash
 # Start with the New Game wizard
+. .venv/bin/activate
 python main.py
 
 # Load an existing save or scenario file
 python main.py mysave.sav
 python main.py second-conflict/SCWSCEN.1
 ```
-
+Note:
+- With venv you are creating a python virtual enviornment which will install the dependencies for this game in that virtual environment.
+- Using venv isn't required, you can install the requireid libraries into the global python environment. I don't typically do that because it keeps the global python environment clean and dependency free.
 ---
 
 ## Controls
