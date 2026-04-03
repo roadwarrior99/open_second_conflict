@@ -62,6 +62,38 @@ class FleetDialog(BaseDialog):
         self._REPEAT_INTERVAL = 60
         self._FAST_INTERVAL   = 20
 
+        # Text-box editing: 'dest' or a star_attr string
+        self._active_field: str = 'dest'
+        self._edit_buf:     str = ''
+        self._send_input_rects: dict[str, pygame.Rect] = {}
+        self._dest_input_rect:  pygame.Rect | None = None
+
+    # ------------------------------------------------------------------
+
+    def _activate_field(self, field: str):
+        """Switch the active text-input field, committing the previous one."""
+        self._commit_field()
+        self._active_field = field
+        if field == 'dest':
+            self._edit_buf = self._dest_str
+        else:
+            self._edit_buf = str(self._send.get(field, 0))
+
+    def _commit_field(self):
+        """Apply the current edit buffer to the active field."""
+        if self._active_field == 'dest':
+            self._dest_str = self._edit_buf
+        else:
+            try:
+                val = int(self._edit_buf)
+                self._send[self._active_field] = max(
+                    0, min(val, self._avail.get(self._active_field, 0))
+                )
+            except ValueError:
+                pass   # keep old value on bad input
+
+    # ------------------------------------------------------------------
+
     def handle_event(self, event: pygame.event.Event):
         super().handle_event(event)
         if event.type == pygame.MOUSEMOTION:
@@ -71,26 +103,47 @@ class FleetDialog(BaseDialog):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
             if self._btn_ok_rect and self._btn_ok_rect.collidepoint(pos):
-                self._try_dispatch(); return
+                self._commit_field(); self._try_dispatch(); return
             if self._btn_can_rect and self._btn_can_rect.collidepoint(pos):
                 self.close(None); return
+            if self._dest_input_rect and self._dest_input_rect.collidepoint(pos):
+                self._activate_field('dest'); return
+            for key, r in self._send_input_rects.items():
+                if r.collidepoint(pos):
+                    self._activate_field(key); return
             for key, r in self._plus_rects.items():
                 if r.collidepoint(pos):
-                    self._apply_delta(key, +1); self._start_hold(key, +1); return
+                    self._commit_field()
+                    self._apply_delta(key, +1); self._start_hold(key, +1)
+                    if self._active_field == key:
+                        self._edit_buf = str(self._send[key])
+                    return
             for key, r in self._minus_rects.items():
                 if r.collidepoint(pos):
-                    self._apply_delta(key, -1); self._start_hold(key, -1); return
+                    self._commit_field()
+                    self._apply_delta(key, -1); self._start_hold(key, -1)
+                    if self._active_field == key:
+                        self._edit_buf = str(self._send[key])
+                    return
 
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self._held = None
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN:
-                self._try_dispatch()
+                self._commit_field(); self._try_dispatch()
+            elif event.key == pygame.K_TAB:
+                # cycle: dest → warships → transports → stealthships → missiles → dest
+                order = ['dest'] + [sa for _, sa, _ in _SHIP_ROWS]
+                idx = order.index(self._active_field) if self._active_field in order else 0
+                self._activate_field(order[(idx + 1) % len(order)])
             elif event.key == pygame.K_BACKSPACE:
-                self._dest_str = self._dest_str[:-1]
-            elif event.unicode.isdigit() and len(self._dest_str) < 3:
-                self._dest_str += event.unicode
+                self._edit_buf = self._edit_buf[:-1]
+            elif event.unicode.isdigit():
+                if self._active_field == 'dest' and len(self._edit_buf) < 3:
+                    self._edit_buf += event.unicode
+                elif self._active_field != 'dest' and len(self._edit_buf) < 6:
+                    self._edit_buf += event.unicode
 
     def update(self, dt: int):
         if self._held is None:
@@ -126,33 +179,54 @@ class FleetDialog(BaseDialog):
 
         # Destination input
         surface.blit(self._text("Destination star #:"), (x, y))
-        input_rect = pygame.Rect(x + 160, y, 60, 18)
-        pygame.draw.rect(surface, (40, 40, 60), input_rect)
-        pygame.draw.rect(surface, (100, 100, 160), input_rect, 1)
-        surface.blit(self._text(self._dest_str + "|"), (input_rect.x + 3, input_rect.y + 1))
+        dest_active = (self._active_field == 'dest')
+        dest_display = (self._edit_buf if dest_active else self._dest_str) + "|"
+        dest_box = pygame.Rect(x + 160, y, 60, 18)
+        self._dest_input_rect = dest_box
+        pygame.draw.rect(surface, (60, 60, 90) if dest_active else (40, 40, 60), dest_box)
+        pygame.draw.rect(surface, (140, 140, 220) if dest_active else (100, 100, 160), dest_box, 1)
+        surface.blit(self._text(dest_display), (dest_box.x + 3, dest_box.y + 1))
         if self._dest_error:
             surface.blit(self._text(self._dest_error, (220, 60, 60)), (x + 230, y))
         y += 26
 
         # Header
-        for hi, h in enumerate(["Ship Type", "Available", "Send", "", ""]):
-            surface.blit(self._text(h, (160, 160, 200)), (x + hi * _COL_W, y))
+        surface.blit(self._text("Ship Type",  (160, 160, 200)), (x,           y))
+        surface.blit(self._text("Available",  (160, 160, 200)), (x + 100,     y))
+        surface.blit(self._text("Send",       (160, 160, 200)), (x + 190,     y))
         y += 18
 
         self._plus_rects.clear()
         self._minus_rects.clear()
+        self._send_input_rects.clear()
 
         _DIM = (100, 100, 120)
         for label, star_attr, _ in _SHIP_ROWS:
-            avail = self._avail.get(star_attr, 0)
-            send  = self._send.get(star_attr, 0)
-            dim   = (avail <= 0)
-            col   = _DIM if dim else TEXT_COL
-            for ci, txt in enumerate([label, str(avail), str(send)]):
-                surface.blit(self._text(txt, col), (x + ci * _COL_W, y))
+            avail      = self._avail.get(star_attr, 0)
+            send       = self._send.get(star_attr, 0)
+            dim        = (avail <= 0)
+            col        = _DIM if dim else TEXT_COL
+            is_editing = (self._active_field == star_attr)
 
-            hx = x + 3 * _COL_W
+            surface.blit(self._text(label, col),      (x,       y))
+            surface.blit(self._text(str(avail), col), (x + 100, y))
+
+            # Send quantity box (always shown, editable when active)
+            box_w  = 60
+            box    = pygame.Rect(x + 190, y, box_w, 18)
+            box_bg = (60, 70, 100) if is_editing else (35, 40, 65)
+            box_bd = (140, 160, 230) if is_editing else (80, 90, 140)
+            pygame.draw.rect(surface, box_bg, box)
+            pygame.draw.rect(surface, box_bd, box, 1)
+            display = (self._edit_buf + "|") if is_editing else str(send)
+            surface.blit(self._text(display, (230, 240, 255) if is_editing else col),
+                         (box.x + 4, box.y + 1))
             if not dim:
+                self._send_input_rects[star_attr] = box
+
+            # +/- buttons
+            if not dim:
+                hx = x + 260
                 minus_r = pygame.Rect(hx, y, 20, 18)
                 self._minus_rects[star_attr] = minus_r
                 self._draw_button(surface, minus_r, "-")
@@ -165,6 +239,10 @@ class FleetDialog(BaseDialog):
         if self._send.get('transports', 0) > 0:
             surface.blit(self._text("Troops loaded at Dispatch step", (160, 220, 160)),
                          (x, y)); y += 16
+
+        # Hint
+        surface.blit(self._text("Click a Send box to type amount directly  (Tab to cycle)",
+                                (90, 90, 110)), (x, y))
 
         btn_y = self.rect.bottom - _BTN_H - 10
         self._btn_ok_rect  = pygame.Rect(self.rect.x + 20,          btn_y, _BTN_W, _BTN_H)
