@@ -155,22 +155,23 @@ def dispatch_fleet(state: GameState, src_star_idx: int, dest_star_idx: int,
     if free_slot is None:
         return False
 
-    src  = state.stars[src_star_idx]
-    dest = state.stars[dest_star_idx]
-    turns = travel_time(src, dest, state.options.sim_steps, state.options.map_param)
-
+    src_star  = state.stars[src_star_idx]
+    dest_star = state.stars[dest_star_idx]
+    turns = travel_time(src_star, dest_star, state.options.sim_steps, state.options.map_param)
+    logger.debug(f"Fleet from {owner_faction} at star {src_star.name} to {dest_star.name} in {turns} turns")
     # Clamp to available
-    warships     = max(0, min(warships,     src.warships))
-    transports   = max(0, min(transports,   src.transports))
-    stealthships = max(0, min(stealthships, src.stealthships))
-    missiles     = max(0, min(missiles,     src.missiles))
+    warships     = max(0, min(warships,     src_star.warships))
+    transports   = max(0, min(transports,   src_star.transports))
+    stealthships = max(0, min(stealthships, src_star.stealthships))
+    missiles     = max(0, min(missiles,     src_star.missiles))
     troop_ships  = max(0, troop_ships)   # already deducted from planets by caller
-
+    logger.debug(f"Fleet: {warships} warships, {transports} transports, {stealthships} stealth"
+                 f", {missiles} missiles, {troop_ships} troops")
     # Deduct ships from source star
-    src.warships     -= warships
-    src.transports   -= transports
-    src.stealthships -= stealthships
-    src.missiles     -= missiles
+    src_star.warships     -= warships
+    src_star.transports   -= transports
+    src_star.stealthships -= stealthships
+    src_star.missiles     -= missiles
 
     free_slot.owner_faction_id = owner_faction
     free_slot.dest_star        = dest_star_idx
