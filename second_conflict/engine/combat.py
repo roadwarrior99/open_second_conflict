@@ -226,12 +226,18 @@ def bombard(star: Star, attacker_faction: int, state: GameState) -> dict:
             planet.morale = 1
             freed.append(pi + 1)
 
+    # Bombardment damages the star's industrial output
+    if killed_total > 0 and star.resource > 1:
+        star.resource -= 1
+
     if freed:
         state.add_event('combat', attacker_faction,
-                        f"Star {star.star_id}: bombardment freed planet(s) {freed}!")
+                        f"Star {star.star_id}: bombardment freed planet(s) {freed}! "
+                        f"Resource reduced to {star.resource}.")
     elif killed_total:
         state.add_event('combat', attacker_faction,
-                        f"Star {star.star_id}: bombardment killed {killed_total} troops.")
+                        f"Star {star.star_id}: bombardment killed {killed_total} troops. "
+                        f"Resource reduced to {star.resource}.")
 
     return {'firepower': firepower, 'troops_killed': killed_total, 'planets_freed': freed}
 

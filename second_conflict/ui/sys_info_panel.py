@@ -44,7 +44,7 @@ _TYPE_LABELS = {
     PlanetType.STEALTH:    "Stealth",
     PlanetType.FACTORY:    "Factory",
     PlanetType.POPULATION: "Pop",
-    PlanetType.DEAD:       "Dead",
+    PlanetType.DEAD:       "Terraform",
     PlanetType.NEUTRAL:    "Neutral",
 }
 
@@ -55,7 +55,7 @@ _TYPE_TOOLTIPS = {
     PlanetType.STEALTH:    "Stealth — 1 StealthShip per 3 credits; used for scout missions",
     PlanetType.FACTORY:    "Factory — resource grows each turn; also builds WarShips",
     PlanetType.POPULATION: "Population — grows up to 10 pop; each unit = 1 WarShip/turn",
-    PlanetType.DEAD:       "Dead — terraforms into WarShip world after 10 turns",
+    PlanetType.DEAD:       "Terraform — converts into a WarShip world after 10 turns",
     PlanetType.NEUTRAL:    "Neutral — no production",
 }
 
@@ -265,7 +265,8 @@ class SysInfoPanel:
             pygame.draw.rect(surface, _BORDER, btn_rect, 1, border_radius=3)
 
             txt_col = _BTN_DIS_TXT if disabled else _BTN_TXT
-            lbl = self._font.render(pt, True, txt_col)
+            btn_label = 'T' if pt == PlanetType.DEAD else pt
+            lbl = self._font.render(btn_label, True, txt_col)
             surface.blit(lbl, (bx + (_BTN_W - lbl.get_width()) // 2,
                                 by  + (_BTN_H - lbl.get_height()) // 2))
             bx += _BTN_W + _BTN_GAP

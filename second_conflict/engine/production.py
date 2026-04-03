@@ -17,7 +17,7 @@ from second_conflict.model.star import Planet
 from second_conflict.util.rng import rand
 
 # Maximum troops that can be on any single planet
-_MAX_PLANET_TROOPS = 200
+_MAX_PLANET_TROOPS = 10000
 
 # Production formula: credits_this_turn = (4 - difficulty) * resource + base_prod
 # (from PRODLIMITDLG and FUN_1088_13d8 in Ghidra decompilation)
