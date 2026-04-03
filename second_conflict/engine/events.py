@@ -91,16 +91,10 @@ def _muon_cloud(player, state: GameState):
     if not active:
         return
     fleet = active[rand(len(active))]
-    if rand(2) == 0:
-        new_dest = rand(len(state.stars))
-        fleet.dest_star = new_dest
-        state.add_event('event', player.faction_id,
-                        f"Muon cloud diverts fleet to star {new_dest}!")
-    else:
-        losses = rand(fleet.warships + 1)
-        fleet.warships = max(0, fleet.warships - losses)
-        state.add_event('event', player.faction_id,
-                        f"Muon cloud damages fleet: {losses} WarShips lost!")
+    losses = rand(fleet.warships + 1)
+    fleet.warships = max(0, fleet.warships - losses)
+    state.add_event('event', player.faction_id,
+                    f"Muon cloud damages fleet: {losses} WarShips lost!")
 
 
 def _reinforcements(player, my_stars, state: GameState):

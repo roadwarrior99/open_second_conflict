@@ -6,3 +6,4 @@ ghidra
 *.sav
 **/__pycache__/
 **/*.pyc
+.python-version

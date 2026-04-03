@@ -15,6 +15,7 @@ class GameOptions:
     novice_mode: bool = False   # production = 30000 when True (training wheels)
     empire_builds: bool = True  # Empire-owned stars also produce
     show_events_log: bool = True  # show dispatch/event log dialog after each turn
+    dev_mode: bool = False        # developer mode: star values editable in-game
     is_savegame: bool = False
     version: int = 0x0300
     mode_flag: int = 0          # in-memory mode flag (raw_on_disk = mode * 8)

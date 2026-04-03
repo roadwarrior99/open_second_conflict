@@ -13,7 +13,7 @@ _HDR_COL = (150, 150, 200)
 
 class OptionsDialog(BaseDialog):
     def __init__(self, screen: pygame.Surface, state: GameState):
-        super().__init__(screen, "Game Options", width=400, height=370)
+        super().__init__(screen, "Game Options", width=400, height=392)
         self.state     = state
         self._hover_ok = False
         self._btn_ok   = None
@@ -45,6 +45,8 @@ class OptionsDialog(BaseDialog):
             opts.novice_mode    = not opts.novice_mode
         elif key == 'show_events_log':
             opts.show_events_log = not opts.show_events_log
+        elif key == 'dev_mode':
+            opts.dev_mode = not opts.dev_mode
 
     def draw(self, surface: pygame.Surface):
         super().draw(surface)
@@ -81,6 +83,7 @@ class OptionsDialog(BaseDialog):
             ('empire_builds',  "Empire Builds",   opts.empire_builds),
             ('novice_mode',    "Novice Mode",      opts.novice_mode),
             ('show_events_log',"Show Event Log",   opts.show_events_log),
+            ('dev_mode',       "Developer Mode",   opts.dev_mode),
         ]
         for key, label, val in toggles:
             box = pygame.Rect(x, y, 20, 18)

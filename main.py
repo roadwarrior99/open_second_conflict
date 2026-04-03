@@ -235,6 +235,9 @@ def main():
     sys_panel.set_ground_combat_callback(
         lambda star_idx: _open_ground_combat(screen, state, star_idx)
     )
+    sys_panel.set_edit_star_callback(
+        lambda star_idx: _open_star_editor(screen, state, star_idx)
+    )
 
     # Build menus
     menu_bar.setup([
@@ -490,6 +493,13 @@ def _open_ground_combat(screen, state, star_idx: int):
         return
     from second_conflict.ui.dialogs.ground_combat_dlg import GroundCombatDialog
     GroundCombatDialog(screen, star, current.faction_id, state).run()
+
+
+def _open_star_editor(screen, state, star_idx: int):
+    if star_idx < 0 or star_idx >= len(state.stars):
+        return
+    from second_conflict.ui.dialogs.star_editor_dlg import StarEditorDialog
+    StarEditorDialog(screen, state.stars[star_idx], state).run()
 
 
 # ---------------------------------------------------------------------------

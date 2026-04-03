@@ -40,16 +40,21 @@ class NewGameDialog(BaseDialog):
         # +/- button rects for page 0 numeric fields
         self._inc_rects: dict[str, pygame.Rect] = {}
         self._dec_rects: dict[str, pygame.Rect] = {}
-        self._ai_rects:  dict[int, pygame.Rect] = {}
+        self._ai_rects:   dict[int, pygame.Rect] = {}
+        self._rand_rects: dict[int, pygame.Rect] = {}   # per-player random-name buttons
+        self._btn_rand_all: pygame.Rect | None = None
+        self._hover_rand_all = False
 
     # ------------------------------------------------------------------
 
     def handle_event(self, event: pygame.event.Event):
         super().handle_event(event)
         if event.type == pygame.MOUSEMOTION:
-            self._hover_next   = self._btn_next   and self._btn_next.collidepoint(event.pos)
-            self._hover_back   = self._btn_back   and self._btn_back.collidepoint(event.pos)
-            self._hover_cancel = self._btn_cancel and self._btn_cancel.collidepoint(event.pos)
+            self._hover_next     = self._btn_next     and self._btn_next.collidepoint(event.pos)
+            self._hover_back     = self._btn_back     and self._btn_back.collidepoint(event.pos)
+            self._hover_cancel   = self._btn_cancel   and self._btn_cancel.collidepoint(event.pos)
+            self._hover_rand_all = bool(self._btn_rand_all and
+                                        self._btn_rand_all.collidepoint(event.pos))
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
@@ -61,6 +66,9 @@ class NewGameDialog(BaseDialog):
                 return
             if self._btn_back and self._btn_back.collidepoint(pos):
                 self._page = max(0, self._page - 1)
+                return
+            if self._btn_rand_all and self._btn_rand_all.collidepoint(pos):
+                self._randomise_all_names()
                 return
 
             # Page-specific clicks
@@ -144,29 +152,42 @@ class NewGameDialog(BaseDialog):
 
     def _draw_page1(self, surface, cr):
         x, y = cr.x, cr.y
-        surface.blit(self._title_text("Player Names"), (x, y)); y += 16
+
+        # Title + "Random All" button on the same row
+        surface.blit(self._title_text("Player Names"), (x, y))
+        self._btn_rand_all = pygame.Rect(x + 220, y - 1, 80, 20)
+        self._draw_button(surface, self._btn_rand_all, "? All", self._hover_rand_all)
+        y += 16
 
         # Column headers
         surface.blit(self._text("Name", (160, 160, 210)), (x + 40, y))
-        surface.blit(self._text("AI?",  (160, 160, 210)), (x + 210, y))
+        surface.blit(self._text("AI?",  (160, 160, 210)), (x + 232, y))
         y += 18
 
         self._ai_rects.clear()
+        self._rand_rects.clear()
         for i in range(self._num_players):
             lbl = self._text(f"P{i+1}:")
             surface.blit(lbl, (x, y))
             name = self._names[i]
             editing = (self._editing_name == i)
             box_col = (60, 60, 90) if editing else (35, 35, 55)
-            box = pygame.Rect(x + 40, y, 160, 18)
+            box = pygame.Rect(x + 40, y, 152, 18)
             pygame.draw.rect(surface, box_col, box)
             pygame.draw.rect(surface, (100, 100, 160), box, 1)
             n_surf = self._text((name + "|") if editing else name)
             surface.blit(n_surf, (box.x + 3, box.y + 1))
             self._dec_rects[f'name_{i}'] = box
 
+            # Per-player random-name button
+            rand_box = pygame.Rect(x + 196, y, 22, 18)
+            pygame.draw.rect(surface, (40, 55, 80), rand_box, border_radius=2)
+            pygame.draw.rect(surface, (80, 110, 160), rand_box, 1, border_radius=2)
+            surface.blit(self._text("?", (160, 200, 255)), (rand_box.x + 6, rand_box.y + 1))
+            self._rand_rects[i] = rand_box
+
             # AI toggle checkbox
-            ai_box = pygame.Rect(x + 210, y, 20, 18)
+            ai_box = pygame.Rect(x + 232, y, 20, 18)
             check_col = (50, 50, 80)
             pygame.draw.rect(surface, check_col, ai_box)
             pygame.draw.rect(surface, (100, 100, 160), ai_box, 1)
@@ -176,7 +197,7 @@ class NewGameDialog(BaseDialog):
 
             # "AI" label when toggled
             if self._is_ai[i]:
-                surface.blit(self._text("(AI)", (120, 200, 120)), (x + 236, y))
+                surface.blit(self._text("(AI)", (120, 200, 120)), (x + 258, y))
 
             y += _ROW_H
 
@@ -214,7 +235,12 @@ class NewGameDialog(BaseDialog):
                 setattr(self, attr, max(lo, getattr(self, attr) - step))
 
     def _handle_page1_click(self, pos):
+        from second_conflict.util.name_gen import random_name
         for i in range(self._num_players):
+            if i in self._rand_rects and self._rand_rects[i].collidepoint(pos):
+                self._names[i] = random_name()[:9]
+                self._editing_name = None
+                return
             if i in self._ai_rects and self._ai_rects[i].collidepoint(pos):
                 self._is_ai[i] = not self._is_ai[i]
                 self._editing_name = None
@@ -224,6 +250,13 @@ class NewGameDialog(BaseDialog):
                 self._editing_name = i
                 return
         self._editing_name = None
+
+    def _randomise_all_names(self):
+        from second_conflict.util.name_gen import random_name, reset
+        reset()
+        self._editing_name = None
+        for i in range(self._num_players):
+            self._names[i] = random_name()[:9]
 
     def _handle_page2_click(self, pos):
         toggle_map = {

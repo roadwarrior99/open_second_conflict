@@ -93,8 +93,11 @@ class SysInfoPanel:
         self._hover_btn: int | None = None
         self._on_type_change = None   # callback(star_idx, new_planet_type)
         self._on_ground_combat = None  # callback(star_idx) → opens GroundCombatDialog
+        self._on_edit_star = None     # callback(star_idx) → opens StarEditorDialog
         self._gc_btn_rect: pygame.Rect | None = None
-        self._hover_gc = False
+        self._edit_btn_rect: pygame.Rect | None = None
+        self._hover_gc   = False
+        self._hover_edit = False
 
     def set_state(self, state: GameState):
         self.state = state
@@ -106,6 +109,10 @@ class SysInfoPanel:
     def set_ground_combat_callback(self, cb):
         """cb(star_idx: int) → None  — opens Ground Combat dialog for that star."""
         self._on_ground_combat = cb
+
+    def set_edit_star_callback(self, cb):
+        """cb(star_idx: int) → None  — opens Star Editor dialog (dev mode)."""
+        self._on_edit_star = cb
 
     # ------------------------------------------------------------------
     # Event handling
@@ -119,6 +126,18 @@ class SysInfoPanel:
             return
 
         star = self.state.stars[selected_star_idx]
+
+        # Dev-mode Edit Star button — works on any star regardless of ownership
+        if self.state.options.dev_mode:
+            if event.type == pygame.MOUSEMOTION:
+                self._hover_edit = (self._edit_btn_rect is not None and
+                                    self._edit_btn_rect.collidepoint(event.pos))
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self._edit_btn_rect and self._edit_btn_rect.collidepoint(event.pos):
+                    if self._on_edit_star:
+                        self._on_edit_star(selected_star_idx)
+                    return
+
         current_player = self.state.current_player()
         if current_player is None:
             return
@@ -306,6 +325,19 @@ class SysInfoPanel:
             lbl = self._font.render(gc_label, True, (255, 200, 120))
             surface.blit(lbl, (gc_rect.x + 6, gc_rect.y + (_BTN_H - lbl.get_height()) // 2))
             self._gc_btn_rect = gc_rect
+
+        # Dev-mode Edit Star button — any star, any owner
+        self._edit_btn_rect = None
+        if self.state.options.dev_mode:
+            edit_label = f"[DEV] Edit Star {star.star_id}"
+            edit_w = 8 * len(edit_label) + 16
+            edit_rect = pygame.Rect(rx, y, edit_w, _BTN_H)
+            bg = (80, 60, 20) if self._hover_edit else (55, 40, 15)
+            pygame.draw.rect(surface, bg, edit_rect, border_radius=3)
+            pygame.draw.rect(surface, (160, 140, 60), edit_rect, 1, border_radius=3)
+            lbl = self._font.render(edit_label, True, (255, 230, 100))
+            surface.blit(lbl, (edit_rect.x + 6, edit_rect.y + (_BTN_H - lbl.get_height()) // 2))
+            self._edit_btn_rect = edit_rect
 
     def _draw_tooltip(self, surface: pygame.Surface,
                       anchor: pygame.Rect, planet_type: str):
