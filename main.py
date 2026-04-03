@@ -25,6 +25,8 @@ Menu bar
 import sys
 import os
 import pygame
+import argparse
+import logging
 
 # Layout constants
 SCREEN_W = 1100
@@ -189,18 +191,20 @@ class MenuBar:
 # Main
 # ---------------------------------------------------------------------------
 
-def main():
+def main(save_file: str, debug: bool = False):
+    logger = logging.getLogger()
     pygame.init()
     pygame.display.set_caption(TITLE)
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     clock  = pygame.time.Clock()
 
     # Start with a file from argv, or an empty state (user picks from menu)
-    if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
-        state = _load_file(sys.argv[1])
+    if len(sys.argv) > 1 and os.path.isfile(save_file):
+        state = _load_file(save_file)
+        state.options.dev_mode = debug
     else:
         from second_conflict.model.game_state import GameState, GameOptions
-        state = GameState(options=GameOptions())
+        state = GameState(options=GameOptions(dev_mode=debug))
 
     from second_conflict.ui.map_view    import MapView
     from second_conflict.ui.side_panel  import SidePanel
@@ -623,4 +627,10 @@ def _simple_input_dialog(screen: pygame.Surface, prompt: str, default: str) -> s
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Second Conflict')
+    parser.add_argument('--save', metavar='save', help='Load scenario/save from file')
+    parser.add_argument('--dev-mode', action='store_true', help='Enable dev mode')
+    parser.add_argument('--loglevel', default='INFO', help='Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL')
+    args = parser.parse_args()
+    logging.basicConfig(level=getattr(logging, args.loglevel))
+    main(save_file=args.save, debug=args.dev_mode)

@@ -18,6 +18,9 @@ from second_conflict.model.constants import EMPIRE_FACTION
 from second_conflict.model.game_state import GameState
 from second_conflict.model.star import Star
 from second_conflict.util.rng import rand
+import logging
+from math import floor
+logger = logging.getLogger(__name__)
 
 _BOMBARD_RATE = 2   # troops killed per warship per bombardment action
 
@@ -212,12 +215,14 @@ def bombard(star: Star, attacker_faction: int, state: GameState) -> dict:
 
     Returns a summary dict: {'firepower': int, 'troops_killed': int, 'planets_freed': list}
     """
-    star.warships -= 1
+    logger.debug(f"Bombard system {star.star_id} with {star.warships} warships")
     firepower = star.warships * _BOMBARD_RATE
+    logger.debug(f"Firepower: {firepower}")
     attacker_remaining = firepower
     killed_total = 0
     freed = []
 
+    collateral_damage_message = ""
     for pi, planet in enumerate(star.planets):
         if attacker_remaining <= 0:
             break
@@ -225,30 +230,41 @@ def bombard(star: Star, attacker_faction: int, state: GameState) -> dict:
             continue
         if planet.troops <= 0:
             continue
+        logger.debug(f"Bombarding planet {pi + 1} with {attacker_remaining} attack power")
         killed = min(planet.troops, attacker_remaining)
         planet.troops -= killed
         attacker_remaining    -= killed
         killed_total += killed
+        lost_ships = 0
+        lost_ships += floor(((killed / 3) * rand(100)/100))
+        star.warships -= lost_ships
+        logger.debug(f"Planet {pi + 1}: killed {killed} troops, and we lost {lost_ships}"
+                     f" warships with {attacker_remaining} warships remaining. ")
+
+        state.add_event('combat', attacker_faction, f"While bombarding planet {pi + 1}, we lost {lost_ships} warships! ")
         if planet.troops == 0:
             planet.owner_faction_id = attacker_faction
             planet.morale = 1
             freed.append(pi + 1)
 
-    # Bombardment damages the star's industrial output
-    if killed_total > 0 and star.resource > 1:
-        #Lets add a chance of a bombardment destroying production
-        damage_factory_hit = rand( 100 )
-        if damage_factory_hit < 30:
-            star.resource -= 1
-            state.add_event('combat', attacker_faction, f"Star {star.star_id}: bombardment destroyed factory! "
-                            f"Resource reduced to {star.resource}.")
-        if damage_factory_hit <= 5:
-            #distory the planet
-            nuked_planet = rand(len(star.planets))
-            star.blow_up_planet(nuked_planet)
-            state.add_event('combat', attacker_faction,
-                            f"Star {star.star_id}: bombardment destroyed planet {nuked_planet + 1}! "
-                            f"Number of planet reduced to {star.num_planets}.")
+        # Bombardment damages the star's industrial output
+
+        if killed_total > 0 and star.resource > 1:
+            #Lets add a chance of a bombardment destroying production
+            damage_factory_hit = rand( 100 )
+            logger.debug(f"Bombardment factory hit roll: {damage_factory_hit}")
+            if damage_factory_hit < 30:
+                star.resource -= 1
+                logger.debug("Factory destroyed! Resource reduced to 1.")
+                collateral_damage_message = f"Star {star.star_id}: bombardment destroyed factory! Resource reduced to {star.resource}."
+                state.add_event('combat', attacker_faction, collateral_damage_message)
+            if damage_factory_hit <= 5:
+                #distory the planet
+                nuked_planet = pi
+                star.blow_up_planet(nuked_planet)
+                logger.debug(f"Planet {nuked_planet + 1} destroyed! Number of planet reduced to {star.num_planets}.")
+                collateral_damage_message = f"Star {star.star_id}: bombardment destroyed planet {nuked_planet + 1}! Number of planet reduced to {star.num_planets}."
+                state.add_event('combat', attacker_faction, collateral_damage_message)
 
     if freed:
         state.add_event('combat', attacker_faction,
@@ -259,7 +275,8 @@ def bombard(star: Star, attacker_faction: int, state: GameState) -> dict:
                         f"Star {star.star_id}: bombardment killed {killed_total} troops. "
                         f"Resource reduced to {star.resource}.")
 
-    return {'firepower': firepower, 'troops_killed': killed_total, 'planets_freed': freed}
+    return {'firepower': firepower, 'troops_killed': killed_total, 'planets_freed': freed,
+            'collateral_msg': collateral_damage_message}
 
 
 def invade(star: Star, attacker_faction: int, state: GameState) -> dict:

@@ -82,11 +82,13 @@ class GroundCombatDialog(BaseDialog):
         result = combat_engine.bombard(self._star, self._player_faction, self._state)
         freed  = result['planets_freed']
         killed = result['troops_killed']
+        collateral_msg = result['collateral_msg']
+
         if freed:
             self._message     = f"Bombardment freed planet(s) {freed}!  {killed} troops killed."
             self._message_col = _FREE_COL
         else:
-            self._message     = f"Bombardment killed {killed} troops."
+            self._message     = f"Bombardment killed {killed} troops. {collateral_msg}"
             self._message_col = TEXT_COL
 
     def _do_invade(self):
