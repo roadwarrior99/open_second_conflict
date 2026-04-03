@@ -9,9 +9,9 @@ import random
 from second_conflict.ui.dialogs.base_dialog import BaseDialog, TITLE_COL, TEXT_COL
 from second_conflict.model.constants import PLAYER_COLOURS, EMPIRE_FACTION
 
-DOT_W = 6
-DOT_H = 8
-MAX_DOTS = 40   # cap dots per side regardless of fleet size
+DOT_W      = 6
+DOT_H      = 8
+TOTAL_DOTS = 60   # total dots split proportionally between both sides
 
 _COLOR_RED  = (220,  40,  40)
 _COLOR_YEL  = (220, 200,  40)
@@ -77,8 +77,15 @@ class CombatAnimation(BaseDialog):
 
         half_w = ba_w // 2 - 8
 
-        atk_n = min(self.record.atk_initial, MAX_DOTS)
-        def_n = min(self.record.def_initial, MAX_DOTS)
+        atk_init = self.record.atk_initial
+        def_init = self.record.def_initial
+        total    = atk_init + def_init
+        if total > 0:
+            atk_n = max(1, min(TOTAL_DOTS - 1,
+                               round(TOTAL_DOTS * atk_init / total)))
+            def_n = max(1, TOTAL_DOTS - atk_n)
+        else:
+            atk_n = def_n = 1
 
         # Use sprite dimensions if available, else fallback constants
         if self._dot_sprite:
