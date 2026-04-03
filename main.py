@@ -541,7 +541,8 @@ def _new_game(screen: pygame.Surface):
 
 def _load_game(screen: pygame.Surface):
     try:
-        path = _simple_input_dialog(screen, "Open scenario file:", "")
+        from second_conflict.ui.dialogs.open_game_dlg import OpenGameDialog
+        path = OpenGameDialog(screen).run()
         if path and os.path.isfile(path):
             return _load_file(path)
     except Exception as e:
