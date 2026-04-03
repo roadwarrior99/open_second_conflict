@@ -95,6 +95,10 @@ class Star:
     # Helpers
     # ------------------------------------------------------------------
 
+    def blow_up_planet(self, planet_idx: int):
+        self.planets.remove(self.planets[planet_idx])
+
+
     def owner_name(self, players) -> str:
         if self.owner_faction_id == 0x1A:
             return "Empire"
