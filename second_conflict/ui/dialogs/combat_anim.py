@@ -320,7 +320,7 @@ class CombatAnimation(BaseDialog):
         # Attrition stats
         atk_losses = rec.atk_initial - rec.atk_final
         def_losses = rec.def_initial - rec.def_final
-        stats = (f"WarShips: "
+        stats = (f"Firepower: "
                  f"Attacker {rec.atk_initial} → {rec.atk_final}  (lost {atk_losses}) "
                  f"Defender {rec.def_initial} → {rec.def_final}  (lost {def_losses})")
         surface.blit(self._text(stats), (cr.x, stats_y))

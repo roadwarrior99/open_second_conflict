@@ -41,8 +41,8 @@ class CombatRecord:
     star_y: int
     attacker_faction: int
     defender_faction: int
-    atk_initial: int        # post-barrage attacker ships (used for attrition animation)
-    def_initial: int        # post-barrage defender ships
+    atk_initial: int        # post-barrage attacker effective firepower (SS counts as 2)
+    def_initial: int        # post-barrage defender effective firepower (SS counts as 2)
     rounds: list = field(default_factory=list)
     atk_final: int = 0
     def_final: int = 0
@@ -140,16 +140,30 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
     star.missiles  = 0
 
     # --- Phase 1: attrition rounds ---
-    atk_firepower    = atk_ws + atk_ss
-    def_firepower   = def_ws + def_ss
+    # StealthShips count as 2 WarShips in effective firepower: they have
+    # double durability (takes 2 WS to kill 1 SS) and attacking SS fire
+    # first before defenders can respond (first-strike advantage).
+    atk_firepower = atk_ws + atk_ss * 2
+    def_firepower = def_ws + def_ss * 2
 
-    logger.debug(f"Attacker: {atk_firepower} firepower")
-    logger.debug(f"Defender: {def_firepower} firepower")
+    logger.debug(f"Attacker: {atk_firepower} firepower ({atk_ws} WS + {atk_ss} SS)")
+    logger.debug(f"Defender: {def_firepower} firepower ({def_ws} WS + {def_ss} SS)")
 
     atk_init = atk_firepower
     def_init = def_firepower
 
     rounds = []
+
+    # Pre-strike: attacking StealthShips fire before defenders respond.
+    # Represents the first-mover advantage in the original firing sequence.
+    if atk_ss > 0 and def_firepower > 0:
+        ss_fp = atk_ss * 2
+        pre_def_hit = rand(5) + ss_fp // 3
+        pre_def_hit = min(pre_def_hit, def_firepower)
+        def_firepower = max(0, def_firepower - pre_def_hit)
+        rounds.append((0, pre_def_hit))
+        logger.debug(f"SS pre-strike: {pre_def_hit} def firepower destroyed")
+
     for _ in range(3):
         if atk_firepower <= 0 or def_firepower <= 0:
             break
@@ -158,14 +172,15 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
 
         def_hit = rand(5) + atk_firepower // 3
         def_hit = min(def_hit, def_firepower)
-        logger.debug(f"Attrition: {atk_hit} atk, {def_firepower - atk_hit} def")
+        logger.debug(f"Attrition: atk lost {atk_hit}, def lost {def_hit}")
 
-        atk_firepower  = max(0, atk_firepower  - atk_hit)
+        atk_firepower = max(0, atk_firepower - atk_hit)
         def_firepower = max(0, def_firepower - def_hit)
         rounds.append((atk_hit, def_hit))
 
-    # Distribute surviving ships proportionally back to each type
-    # (baseline is post-barrage counts, which may already differ from fleet/star originals)
+    # Distribute surviving firepower proportionally back to each ship type.
+    # Because SS = 2x effective FP, proportional distribution naturally
+    # preserves the ~2:1 WS-to-SS kill ratio.
     if atk_init > 0:
         r = atk_firepower / atk_init
         fleet.warships     = round(atk_ws * r)
