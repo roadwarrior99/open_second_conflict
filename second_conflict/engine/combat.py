@@ -55,6 +55,8 @@ class CombatRecord:
     def_missiles_fired: int = 0
     missile_atk_killed: int = 0  # attacker ships killed by defender missiles
     missile_def_killed: int = 0  # defender ships killed by attacker missiles
+    missile_planet_kills: int = 0          # troops killed by excess attacker missiles
+    missile_planets_freed: list = field(default_factory=list)  # planet indices freed
 
 
 def resolve_all(state: GameState) -> list:
@@ -117,7 +119,11 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
     logger.debug(f"Attacker: {atk_ws} warships, {atk_ss} stealth, {atk_missiles} missiles")
     logger.debug(f"Defender: {def_ws} warships, {def_ss} stealth, {def_missiles} missiles")
     # --- Phase 0: missile barrage ---
-    # Attacker missiles hit defender (warships first)
+    # Attacker missiles hit defender (warships first, then stealthships).
+    # Any missiles remaining after all ships are destroyed bombard planets
+    # at 1 missile = 1 troop killed (enemy planets only).
+    missile_planet_kills = 0
+    missile_planets_freed = []
     if atk_missiles > 0:
         logger.debug(f"Missiles: {atk_missiles} atk")
         kill = min(atk_missiles, def_ws)
@@ -125,6 +131,27 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
         remainder = atk_missiles - kill
         kill2 = min(remainder, def_ss)
         def_ss -= kill2
+        leftover = remainder - kill2
+
+        if leftover > 0:
+            logger.debug(f"Missiles: {leftover} excess hitting planets")
+            for pi, planet in enumerate(star.planets):
+                if leftover <= 0:
+                    break
+                if planet.owner_faction_id == fleet.owner_faction_id:
+                    continue
+                if planet.troops <= 0:
+                    continue
+                killed = min(planet.troops, leftover)
+                planet.troops -= killed
+                leftover -= killed
+                missile_planet_kills += killed
+                if planet.troops == 0:
+                    planet.owner_faction_id = fleet.owner_faction_id
+                    planet.morale = 1
+                    missile_planets_freed.append(pi + 1)
+            logger.debug(f"Missile planet bombardment: {missile_planet_kills} troops killed, "
+                         f"{len(missile_planets_freed)} planets freed")
 
     # Defender missiles hit attacker (warships first) — simultaneous
     if def_missiles > 0:
@@ -214,6 +241,8 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
         def_missiles_fired=def_missiles,
         missile_atk_killed=pre_atk - (atk_ws + atk_ss),
         missile_def_killed=pre_def - (def_ws + def_ss),
+        missile_planet_kills=missile_planet_kills,
+        missile_planets_freed=missile_planets_freed,
     )
 
     atk_losses = atk_init - atk_firepower
@@ -226,6 +255,12 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
     state.add_event('combat', star.owner_faction_id,
                     f"Combat at star {star.star_id}: attacker lost {atk_losses}, "
                     f"defender lost {def_losses}")
+    if missile_planet_kills > 0:
+        msg = (f"Star {star.star_id}: excess missiles bombarded planets, "
+               f"killed {missile_planet_kills} troops")
+        if missile_planets_freed:
+            msg += f", freed planet(s) {missile_planets_freed}"
+        state.add_event('combat', fleet.owner_faction_id, msg)
 
     if def_firepower == 0:
         # Defender eliminated — attacker takes the star
