@@ -13,7 +13,7 @@ from second_conflict.model.game_state import GameState
 
 _ROW_H = 18
 _HDR_COLS = ["Owner",  "Dest", "Turns", "War", "Troop", "Stlth", "Msle", "Scout", "Probe", "Type"]
-_COL_XS   = [0,        85,     125,     170,   210,     255,     300,    340,     380,     415]
+_COL_XS   = [0,        110,    150,     195,   235,     280,     325,    365,     405,     440]
 
 
 class FleetViewDialog(BaseDialog):
@@ -122,7 +122,7 @@ class FleetViewDialog(BaseDialog):
                 if fi == self._selected:
                     pygame.draw.rect(surface, (40, 60, 100), row_rect)
                 owner = self.state.player_for_faction(fleet.owner_faction_id)
-                owner_name = owner.name[:8] if owner else f"0x{fleet.owner_faction_id:02x}"
+                owner_name = owner.name[:13] if owner else f"0x{fleet.owner_faction_id:02x}"
                 cols = [
                     owner_name,
                     str(fleet.dest_star),

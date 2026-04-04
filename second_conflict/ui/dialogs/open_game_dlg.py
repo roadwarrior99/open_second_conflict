@@ -203,7 +203,7 @@ class OpenGameDialog(BaseDialog):
                 kind = "AI" if not p.is_human else "Human"
                 stars = sum(1 for st in s.stars
                             if st.owner_faction_id == p.faction_id)
-                line = f"  {p.name[:10]:<10}  {kind:<5}  {stars} stars"
+                line = f"  {p.name[:16]:<16}  {kind:<5}  {stars} stars"
                 surface.blit(self._font_body.render(line, True, _GOOD_COL), (px, py))
                 py += _ROW_H
         elif self._files:

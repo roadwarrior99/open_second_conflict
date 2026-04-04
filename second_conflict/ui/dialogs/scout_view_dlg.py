@@ -14,7 +14,7 @@ _HDR_COL = (160, 160, 210)
 _SEL_COL = (50, 70, 120)
 _ALT_COL = (18, 22, 36)
 
-_COLS = [0, 50, 145, 230, 290, 380]   # Star | Coords | Owner | Type | WarShips | Total
+_COLS = [0, 50, 145, 255, 315, 405]   # Star | Coords | Owner | Type | WarShips | Total
 
 
 class ScoutViewDialog(BaseDialog):
@@ -40,7 +40,7 @@ class ScoutViewDialog(BaseDialog):
             if star.owner_faction_id == EMPIRE_FACTION:
                 owner_name = "Empire"
             elif owner:
-                owner_name = owner.name[:8]
+                owner_name = owner.name[:10]
             else:
                 owner_name = f"?{star.owner_faction_id:02x}"
 

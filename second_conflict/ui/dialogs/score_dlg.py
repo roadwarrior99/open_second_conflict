@@ -56,8 +56,8 @@ class ScoreDialog(BaseDialog):
         y += 4
 
         # Column headers
-        headers = [("#", 0), ("Admiral", 20), ("Stars", 115), ("Fleet", 155),
-                   ("Score", 195), ("Status", 240)]
+        headers = [("#", 0), ("Admiral", 20), ("Stars", 145), ("Fleet", 185),
+                   ("Score", 225), ("Status", 270)]
         for hdr, cx in headers:
             surface.blit(self._font_body.render(hdr, True, (150, 150, 200)), (x + cx, y))
         y += _ROW_H
@@ -73,11 +73,11 @@ class ScoreDialog(BaseDialog):
             status = "Active" if player.is_active else "Eliminated"
             cols = [
                 (str(rank),           0),
-                (player.name[:9],     20),
-                (str(player.empire_size), 115),
-                (str(player.fleet_count), 155),
-                (str(_score(player)), 195),
-                (status,              240),
+                (player.name[:14],    20),
+                (str(player.empire_size), 145),
+                (str(player.fleet_count), 185),
+                (str(_score(player)), 225),
+                (status,              270),
             ]
             for text, cx in cols:
                 surface.blit(self._font_body.render(text, True, colour), (x + cx, y))

@@ -233,7 +233,7 @@ class SysInfoPanel:
         owner_player = self.state.player_for_faction(star.owner_faction_id)
         owner_name = (
             "Empire" if star.owner_faction_id == EMPIRE_FACTION
-            else (owner_player.name[:8] if owner_player else f"?{star.owner_faction_id:02x}")
+            else (owner_player.name[:16] if owner_player else f"?{star.owner_faction_id:02x}")
         )
         type_name = _TYPE_LABELS.get(star.planet_type, star.planet_type)
         info = (f"Star {star.star_id}  ({star.x},{star.y})  "

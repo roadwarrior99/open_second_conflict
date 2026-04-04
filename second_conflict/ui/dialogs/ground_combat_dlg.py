@@ -139,7 +139,7 @@ class GroundCombatDialog(BaseDialog):
 
             owner = self._state.player_for_faction(planet.owner_faction_id)
             if owner:
-                oname = owner.name[:8]
+                oname = owner.name[:12]
             elif planet.owner_faction_id == 0x1A:
                 oname = "Empire"
             else:

@@ -9,7 +9,7 @@ from second_conflict.model.game_state import GameState
 from second_conflict.model.constants import PLAYER_COLOURS, EMPIRE_FACTION
 
 _ROW_H  = 20
-_COL_XS = [0, 30, 120, 200, 280, 360]   # column x offsets relative to content_rect.x
+_COL_XS = [0, 30, 140, 220, 300, 380]   # column x offsets relative to content_rect.x
 _HEADERS = ["#", "Name", "Stars", "Prod", "Fleet", "Credits"]
 
 
@@ -57,7 +57,7 @@ class StatsDialog(BaseDialog):
             pidx = self.state.players.index(player)
             colour = PLAYER_COLOURS[pidx] if pidx < len(PLAYER_COLOURS) else TEXT_COL
             display_name = ("The Empire" if player.faction_id == EMPIRE_FACTION
-                            else player.name[:9])
+                            else player.name[:13])
             cols = [
                 str(rank),
                 display_name,

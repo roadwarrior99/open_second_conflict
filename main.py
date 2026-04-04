@@ -27,6 +27,9 @@ import os
 import pygame
 import argparse
 import logging
+from second_conflict.ui.map_view import MapView
+from second_conflict.ui.side_panel import SidePanel
+from second_conflict.ui.sys_info_panel import SysInfoPanel
 
 # Layout constants
 SCREEN_W = 1100
@@ -199,16 +202,17 @@ def main(save_file: str, debug: bool = False):
     clock  = pygame.time.Clock()
 
     # Start with a file from argv, or an empty state (user picks from menu)
-    if len(sys.argv) > 1 and os.path.isfile(save_file):
+    if save_file and os.path.isfile(save_file):
         state = _load_file(save_file)
         state.options.dev_mode = debug
     else:
         from second_conflict.model.game_state import GameState, GameOptions
         state = GameState(options=GameOptions(dev_mode=debug))
+    if debug:
+        # Disable event log for faster turn processing in dev mode
+        state.options.show_events_log = False
 
-    from second_conflict.ui.map_view    import MapView
-    from second_conflict.ui.side_panel  import SidePanel
-    from second_conflict.ui.sys_info_panel import SysInfoPanel
+
 
     menu_rect  = pygame.Rect(0,            0,      SCREEN_W, MENU_H)
     map_rect   = pygame.Rect(0,            MENU_H, MAP_W,    MAP_H)
