@@ -158,7 +158,8 @@ def dispatch_fleet(state: GameState, src_star_idx: int, dest_star_idx: int,
     src_star  = state.stars[src_star_idx]
     dest_star = state.stars[dest_star_idx]
     turns = travel_time(src_star, dest_star, state.options.sim_steps, state.options.map_param)
-    logger.debug(f"Fleet from {owner_faction} at star {src_star.name} to {dest_star.name} in {turns} turns")
+    logger.debug(f"Fleet from star {src_star.star_id} owner {src_star.owner_name(state.players)}"
+                 f" to {dest_star.star_id} owner {dest_star.owner_name(state.players)} in {turns} turns")
     # Clamp to available
     warships     = max(0, min(warships,     src_star.warships))
     transports   = max(0, min(transports,   src_star.transports))
