@@ -12,8 +12,8 @@ from second_conflict.model.constants import FREE_SLOT
 from second_conflict.model.game_state import GameState
 
 _ROW_H = 18
-_HDR_COLS = ["Slot", "Dest", "Turns", "War", "Troop", "Stlth", "Msle", "Scout", "Probe", "Type"]
-_COL_XS   = [0,     40,     80,      130,   170,     215,     260,    300,     345,     390]
+_HDR_COLS = ["Owner",  "Dest", "Turns", "War", "Troop", "Stlth", "Msle", "Scout", "Probe", "Type"]
+_COL_XS   = [0,        85,     125,     170,   210,     255,     300,    340,     380,     415]
 
 
 class FleetViewDialog(BaseDialog):
@@ -22,21 +22,30 @@ class FleetViewDialog(BaseDialog):
         super().__init__(screen, "Fleet Status", width=620, height=380)
         self.state          = state
         self.player_faction = player_faction
+        self._dev_mode      = state.options.dev_mode
 
-        # Build list of active fleets for this player
-        self._fleets = [
-            (i, f) for i, f in enumerate(state.fleets_in_transit)
-            if f.owner_faction_id == player_faction
-        ]
-        self._selected    = 0
-        self._scroll      = 0
-        self._hover_ok    = False
-        self._hover_can   = False
+        # In dev mode show ALL active fleets, not just the current player's
+        if self._dev_mode:
+            self._fleets = [
+                (i, f) for i, f in enumerate(state.fleets_in_transit)
+                if not f.is_free
+            ]
+        else:
+            self._fleets = [
+                (i, f) for i, f in enumerate(state.fleets_in_transit)
+                if f.owner_faction_id == player_faction
+            ]
+        self._selected     = 0
+        self._scroll       = 0
+        self._hover_ok     = False
+        self._hover_can    = False
         self._hover_recall = False
-        self._btn_ok      = None
-        self._btn_can     = None
-        self._btn_recall  = None
-        self._recall_msg  = ""
+        self._hover_edit   = False
+        self._btn_ok       = None
+        self._btn_can      = None
+        self._btn_recall   = None
+        self._btn_edit     = None
+        self._recall_msg   = ""
 
     # ------------------------------------------------------------------
 
@@ -47,6 +56,7 @@ class FleetViewDialog(BaseDialog):
             self._hover_ok     = self._btn_ok     and self._btn_ok.collidepoint(event.pos)
             self._hover_can    = self._btn_can    and self._btn_can.collidepoint(event.pos)
             self._hover_recall = self._btn_recall and self._btn_recall.collidepoint(event.pos)
+            self._hover_edit   = self._btn_edit   and self._btn_edit.collidepoint(event.pos)
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
                 if self._btn_ok  and self._btn_ok.collidepoint(event.pos):
@@ -57,6 +67,9 @@ class FleetViewDialog(BaseDialog):
                     return
                 if self._btn_recall and self._btn_recall.collidepoint(event.pos):
                     self._do_recall()
+                    return
+                if self._btn_edit and self._btn_edit.collidepoint(event.pos):
+                    self._do_edit()
                     return
                 # Row click
                 cr = self._content_rect()
@@ -108,10 +121,11 @@ class FleetViewDialog(BaseDialog):
                 row_rect = pygame.Rect(x, y, cr.width, _ROW_H)
                 if fi == self._selected:
                     pygame.draw.rect(surface, (40, 60, 100), row_rect)
-                dest_name = str(fleet.dest_star)
+                owner = self.state.player_for_faction(fleet.owner_faction_id)
+                owner_name = owner.name[:8] if owner else f"0x{fleet.owner_faction_id:02x}"
                 cols = [
-                    str(slot_idx),
-                    dest_name,
+                    owner_name,
+                    str(fleet.dest_star),
                     str(fleet.turns_remaining),
                     str(fleet.warships),
                     str(fleet.troop_ships),
@@ -150,12 +164,28 @@ class FleetViewDialog(BaseDialog):
 
         # Buttons
         btn_y = self.rect.bottom - 38
-        self._btn_ok     = pygame.Rect(self.rect.centerx - 150, btn_y, 80, 28)
-        self._btn_recall = pygame.Rect(self.rect.centerx - 60,  btn_y, 90, 28)
-        self._btn_can    = pygame.Rect(self.rect.centerx + 40,  btn_y, 80, 28)
-        self._draw_button(surface, self._btn_ok,     "Go To",  self._hover_ok)
-        self._draw_button(surface, self._btn_recall, "Recall", self._hover_recall)
-        self._draw_button(surface, self._btn_can,    "Close",  self._hover_can)
+        if self._dev_mode:
+            self._btn_ok     = pygame.Rect(self.rect.centerx - 190, btn_y, 70, 28)
+            self._btn_recall = pygame.Rect(self.rect.centerx - 110, btn_y, 80, 28)
+            self._btn_edit   = pygame.Rect(self.rect.centerx - 20,  btn_y, 60, 28)
+            self._btn_can    = pygame.Rect(self.rect.centerx + 50,  btn_y, 70, 28)
+            self._draw_button(surface, self._btn_ok,     "Go To",  self._hover_ok)
+            self._draw_button(surface, self._btn_recall, "Recall", self._hover_recall)
+            # Amber "Edit" button — draw manually to distinguish from normal buttons
+            edit_col = (200, 160, 40) if self._hover_edit else (140, 100, 20)
+            pygame.draw.rect(surface, edit_col, self._btn_edit, border_radius=4)
+            lbl = self._font_body.render("Edit", True, (255, 255, 255))
+            surface.blit(lbl, (self._btn_edit.centerx - lbl.get_width() // 2,
+                               self._btn_edit.centery - lbl.get_height() // 2))
+            self._draw_button(surface, self._btn_can,    "Close",  self._hover_can)
+        else:
+            self._btn_edit   = None
+            self._btn_ok     = pygame.Rect(self.rect.centerx - 150, btn_y, 80, 28)
+            self._btn_recall = pygame.Rect(self.rect.centerx - 60,  btn_y, 90, 28)
+            self._btn_can    = pygame.Rect(self.rect.centerx + 40,  btn_y, 80, 28)
+            self._draw_button(surface, self._btn_ok,     "Go To",  self._hover_ok)
+            self._draw_button(surface, self._btn_recall, "Recall", self._hover_recall)
+            self._draw_button(surface, self._btn_can,    "Close",  self._hover_can)
 
     # ------------------------------------------------------------------
 
@@ -165,6 +195,14 @@ class FleetViewDialog(BaseDialog):
             self.close(fleet.dest_star)
         else:
             self.close(None)
+
+    def _do_edit(self):
+        if not self._dev_mode or not self._fleets or self._selected >= len(self._fleets):
+            return
+        from second_conflict.ui.dialogs.fleet_editor_dlg import FleetEditorDialog
+        _, fleet = self._fleets[self._selected]
+        FleetEditorDialog(self.screen, fleet, self.state).run()
+        self._recall_msg = f"Fleet slot {fleet.slot} updated."
 
     def _do_recall(self):
         if not self._fleets or self._selected >= len(self._fleets):
