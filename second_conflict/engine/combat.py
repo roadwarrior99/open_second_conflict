@@ -41,13 +41,20 @@ class CombatRecord:
     star_y: int
     attacker_faction: int
     defender_faction: int
-    atk_initial: int
-    def_initial: int
+    atk_initial: int        # post-barrage attacker ships (used for attrition animation)
+    def_initial: int        # post-barrage defender ships
     rounds: list = field(default_factory=list)
     atk_final: int = 0
     def_final: int = 0
     winner_faction: int = -1
     planets_taken: int = 0
+    # Missile barrage data (pre-barrage)
+    atk_ships_total: int = 0     # attacker ships before any missiles
+    def_ships_total: int = 0     # defender ships before any missiles
+    atk_missiles_fired: int = 0
+    def_missiles_fired: int = 0
+    missile_atk_killed: int = 0  # attacker ships killed by defender missiles
+    missile_def_killed: int = 0  # defender ships killed by attacker missiles
 
 
 def resolve_all(state: GameState) -> list:
@@ -102,6 +109,11 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
 
     atk_missiles = fleet.missiles
     def_missiles = star.missiles
+
+    # Pre-barrage totals (for animation proportions)
+    pre_atk = atk_ws + atk_ss
+    pre_def = def_ws + def_ss
+
     logger.debug(f"Attacker: {atk_ws} warships, {atk_ss} stealth, {atk_missiles} missiles")
     logger.debug(f"Defender: {def_ws} warships, {def_ss} stealth, {def_missiles} missiles")
     # --- Phase 0: missile barrage ---
@@ -181,6 +193,12 @@ def _orbital_combat(fleet, star: Star, state: GameState) -> CombatRecord:
         rounds=rounds,
         atk_final=atk_firepower,
         def_final=def_firepower,
+        atk_ships_total=pre_atk,
+        def_ships_total=pre_def,
+        atk_missiles_fired=atk_missiles,
+        def_missiles_fired=def_missiles,
+        missile_atk_killed=pre_atk - (atk_ws + atk_ss),
+        missile_def_killed=pre_def - (def_ws + def_ss),
     )
 
     atk_losses = atk_init - atk_firepower

@@ -3,6 +3,9 @@
 The original renders scattered 5×7 ship-dot sprites in attacker (left) and
 defender (right) halves.  Casualties cycle through three colour phases
 (live → red → yellow → removed) for each of the three attrition rounds.
+
+If missiles were involved a missile-barrage phase plays first, showing
+projectile streaks flying across the divide and the resulting casualties.
 """
 import pygame
 import random
@@ -13,11 +16,12 @@ DOT_W      = 6
 DOT_H      = 8
 TOTAL_DOTS = 60   # total dots split proportionally between both sides
 
-_COLOR_RED  = (220,  40,  40)
-_COLOR_YEL  = (220, 200,  40)
-_COLOR_DEAD = ( 45,  45,  55)   # "dark" — briefly visible then hidden
+_COLOR_RED    = (220,  40,  40)
+_COLOR_YEL    = (220, 200,  40)
+_COLOR_MISSILE= (255, 220,  80)   # projectile streak colour
 
 _DOT_SCALE  = 2   # scale factor for ship-dot sprites
+_MAX_STREAKS = 8  # max visible missile streaks per salvo
 
 
 class _Dot:
@@ -27,7 +31,7 @@ class _Dot:
         self.x = x
         self.y = y
         self.is_attacker = is_attacker
-        self.state = 'alive'   # 'alive' | 'red' | 'yellow' | 'dead'
+        self.state = 'alive'   # 'alive' | 'red' | 'dead'
 
 
 class CombatAnimation(BaseDialog):
@@ -44,6 +48,10 @@ class CombatAnimation(BaseDialog):
 
         self._dots: list[_Dot] = []
         self._casualties: list[tuple[list, list]] = []
+        self._missile_casualties: tuple[list, list] = ([], [])
+
+        # Missile streak data: list of (x1,y1, x2,y2, is_attacker)
+        self._streaks: list[tuple[int,int,int,int,bool]] = []
 
         # Try to load the original ship-dot sprite from SCW.EXE
         self._dot_sprite: pygame.Surface | None = None
@@ -61,7 +69,12 @@ class CombatAnimation(BaseDialog):
 
     def _build_phases(self):
         phases = [('scatter', 600)]
-        for r in range(len(self.record.rounds)):
+        rec = self.record
+        if rec.atk_missiles_fired > 0 or rec.def_missiles_fired > 0:
+            phases.append(('missile_fly',   700))
+            phases.append(('missile_hit',   450))
+            phases.append(('missile_clear', 300))
+        for r in range(len(rec.rounds)):
             phases.append((f'r{r}_red',    500))
             phases.append((f'r{r}_yellow', 350))
             phases.append((f'r{r}_clear',  300))
@@ -69,33 +82,36 @@ class CombatAnimation(BaseDialog):
         return phases
 
     def _setup_dots(self):
-        cr = self._content_rect()
+        cr   = self._content_rect()
         ba_x = cr.x
-        ba_y = cr.y + 36    # leave room for faction labels
+        ba_y = cr.y + 36
         ba_w = cr.width
         ba_h = 140
 
         half_w = ba_w // 2 - 8
+        mid_x  = ba_x + ba_w // 2
 
-        atk_init = self.record.atk_initial
-        def_init = self.record.def_initial
-        total    = atk_init + def_init
-        if total > 0:
-            atk_n = max(1, min(TOTAL_DOTS - 1,
-                               round(TOTAL_DOTS * atk_init / total)))
+        rec = self.record
+
+        # Base dot split on pre-barrage totals when missiles were involved,
+        # otherwise fall back to post-barrage (backward-compatible).
+        atk_total = rec.atk_ships_total if rec.atk_ships_total > 0 else rec.atk_initial
+        def_total = rec.def_ships_total if rec.def_ships_total > 0 else rec.def_initial
+        grand     = atk_total + def_total
+        if grand > 0:
+            atk_n = max(1, min(TOTAL_DOTS - 1, round(TOTAL_DOTS * atk_total / grand)))
             def_n = max(1, TOTAL_DOTS - atk_n)
         else:
             atk_n = def_n = 1
 
-        # Use sprite dimensions if available, else fallback constants
         if self._dot_sprite:
             dw = self._dot_sprite.get_width()
             dh = self._dot_sprite.get_height()
         else:
             dw, dh = DOT_W, DOT_H
 
-        atk_area = pygame.Rect(ba_x + 4,            ba_y + 4, half_w - 8, ba_h - 8)
-        def_area = pygame.Rect(ba_x + ba_w // 2 + 4, ba_y + 4, half_w - 8, ba_h - 8)
+        atk_area = pygame.Rect(ba_x + 4,      ba_y + 4, half_w - 8, ba_h - 8)
+        def_area = pygame.Rect(mid_x + 4,     ba_y + 4, half_w - 8, ba_h - 8)
 
         for _ in range(atk_n):
             x = random.randint(atk_area.x, max(atk_area.x, atk_area.right  - dw))
@@ -107,25 +123,55 @@ class CombatAnimation(BaseDialog):
             y = random.randint(def_area.y, max(def_area.y, def_area.bottom - dh))
             self._dots.append(_Dot(x, y, False))
 
-        # Pre-compute which displayed dots die each round, scaled proportionally.
-        atk_alive = [d for d in self._dots if d.is_attacker]
-        def_alive = [d for d in self._dots if not d.is_attacker]
+        atk_dots = [d for d in self._dots if d.is_attacker]
+        def_dots = [d for d in self._dots if not d.is_attacker]
 
-        for atk_hit, def_hit in self.record.rounds:
-            if self.record.atk_initial > 0:
-                a_dying_n = round(atk_hit * atk_n / self.record.atk_initial)
-            else:
-                a_dying_n = 0
-            if self.record.def_initial > 0:
-                d_dying_n = round(def_hit * def_n / self.record.def_initial)
-            else:
-                d_dying_n = 0
+        # Pre-compute missile casualties (proportional to kill counts)
+        if atk_total > 0 and rec.missile_atk_killed > 0:
+            n = round(rec.missile_atk_killed * atk_n / atk_total)
+            m_atk_dying = atk_dots[:n]
+            atk_dots    = atk_dots[n:]
+        else:
+            m_atk_dying = []
 
-            a_dying = atk_alive[:a_dying_n]
-            d_dying = def_alive[:d_dying_n]
-            atk_alive = atk_alive[a_dying_n:]
-            def_alive = def_alive[d_dying_n:]
-            self._casualties.append((list(a_dying), list(d_dying)))
+        if def_total > 0 and rec.missile_def_killed > 0:
+            n = round(rec.missile_def_killed * def_n / def_total)
+            m_def_dying = def_dots[:n]
+            def_dots    = def_dots[n:]
+        else:
+            m_def_dying = []
+
+        self._missile_casualties = (m_atk_dying, m_def_dying)
+
+        # Pre-compute attrition casualties from the remaining live dots
+        atk_alive = list(atk_dots)
+        def_alive = list(def_dots)
+        atk_post  = rec.atk_initial
+        def_post  = rec.def_initial
+        for atk_hit, def_hit in rec.rounds:
+            a_n = round(atk_hit * len(atk_alive) / atk_post) if atk_post > 0 else 0
+            d_n = round(def_hit * len(def_alive) / def_post) if def_post > 0 else 0
+            self._casualties.append((list(atk_alive[:a_n]), list(def_alive[:d_n])))
+            atk_alive = atk_alive[a_n:]
+            def_alive = def_alive[d_n:]
+            atk_post  = max(1, atk_post - atk_hit)
+            def_post  = max(1, def_post - def_hit)
+
+        # Generate missile streak start/end positions for the fly animation
+        n_atk_streaks = min(_MAX_STREAKS, rec.atk_missiles_fired)
+        n_def_streaks = min(_MAX_STREAKS, rec.def_missiles_fired)
+        for _ in range(n_atk_streaks):
+            sx = random.randint(atk_area.x, atk_area.right)
+            sy = random.randint(atk_area.y, atk_area.bottom)
+            ex = random.randint(def_area.x, def_area.right)
+            ey = random.randint(def_area.y, def_area.bottom)
+            self._streaks.append((sx, sy, ex, ey, True))
+        for _ in range(n_def_streaks):
+            sx = random.randint(def_area.x, def_area.right)
+            sy = random.randint(def_area.y, def_area.bottom)
+            ex = random.randint(atk_area.x, atk_area.right)
+            ey = random.randint(atk_area.y, atk_area.bottom)
+            self._streaks.append((sx, sy, ex, ey, False))
 
     # ------------------------------------------------------------------
     # Event / update
@@ -154,7 +200,15 @@ class CombatAnimation(BaseDialog):
     def _apply_phase_effect(self):
         phase_name, _ = self._phases[self._phase_idx]
 
-        if phase_name.endswith('_red'):
+        if phase_name == 'missile_hit':
+            for d in self._missile_casualties[0] + self._missile_casualties[1]:
+                d.state = 'red'
+
+        elif phase_name == 'missile_clear':
+            for d in self._missile_casualties[0] + self._missile_casualties[1]:
+                d.state = 'dead'
+
+        elif phase_name.endswith('_red'):
             rnum = int(phase_name[1])
             if rnum < len(self._casualties):
                 for d in self._casualties[rnum][0] + self._casualties[rnum][1]:
@@ -192,21 +246,34 @@ class CombatAnimation(BaseDialog):
 
         # Faction name labels
         mid_x = cr.x + cr.width // 2
-        atk_lbl = self._text(f"Attacker: {atk_name}", atk_color)
-        def_lbl = self._text(f"Defender: {def_name}", def_color)
-        surface.blit(atk_lbl, (cr.x + 4, cr.y + 18))
-        surface.blit(def_lbl, (mid_x + 4, cr.y + 18))
+        surface.blit(self._text(f"Attacker: {atk_name}", atk_color), (cr.x + 4, cr.y + 18))
+        surface.blit(self._text(f"Defender: {def_name}", def_color), (mid_x + 4, cr.y + 18))
 
-        # Battle area background + dividing line
+        # Battle area
         ba_y = cr.y + 36
         ba_h = 140
         ba_rect = pygame.Rect(cr.x, ba_y, cr.width, ba_h)
         pygame.draw.rect(surface, (10, 12, 20), ba_rect)
         pygame.draw.rect(surface, (40, 50, 80), ba_rect, 1)
-        pygame.draw.line(surface, (40, 50, 80),
-                         (mid_x, ba_y), (mid_x, ba_y + ba_h))
+        pygame.draw.line(surface, (40, 50, 80), (mid_x, ba_y), (mid_x, ba_y + ba_h))
 
-        # Ship dots
+        phase_name, phase_dur = self._phases[self._phase_idx]
+
+        # ---- Missile streak animation ----
+        if phase_name == 'missile_fly' and self._streaks and phase_dur > 0:
+            t = min(1.0, self._phase_timer / phase_dur)
+            for sx, sy, ex, ey, is_atk in self._streaks:
+                cx = int(sx + (ex - sx) * t)
+                cy = int(sy + (ey - sy) * t)
+                # Draw a short trailing line behind the projectile
+                tail_t = max(0.0, t - 0.15)
+                tx = int(sx + (ex - sx) * tail_t)
+                ty = int(sy + (ey - sy) * tail_t)
+                col = atk_color if is_atk else def_color
+                pygame.draw.line(surface, col,         (tx, ty), (cx, cy), 1)
+                pygame.draw.circle(surface, _COLOR_MISSILE, (cx, cy), 2)
+
+        # ---- Ship dots ----
         if self._dot_sprite:
             dw = self._dot_sprite.get_width()
             dh = self._dot_sprite.get_height()
@@ -217,13 +284,11 @@ class CombatAnimation(BaseDialog):
             if dot.state == 'dead':
                 continue
             if dot.state in ('red', 'yellow'):
-                # Phase colours: draw plain rect so the flash is obvious
                 color = _COLOR_RED if dot.state == 'red' else _COLOR_YEL
                 pygame.draw.rect(surface, color, (dot.x, dot.y, dw, dh))
             elif self._dot_sprite:
-                # Alive: tint the sprite to faction colour
-                tinted = self._dot_sprite.copy()
-                color  = atk_color if dot.is_attacker else def_color
+                tinted  = self._dot_sprite.copy()
+                color   = atk_color if dot.is_attacker else def_color
                 overlay = pygame.Surface((dw, dh))
                 overlay.fill(color)
                 tinted.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
@@ -233,34 +298,49 @@ class CombatAnimation(BaseDialog):
                 color = atk_color if dot.is_attacker else def_color
                 pygame.draw.rect(surface, color, (dot.x, dot.y, dw, dh))
 
-        # Stats row
+        # ---- Info rows below battle area ----
         stats_y = ba_y + ba_h + 8
+
+        # Missile summary (shown during and after missile phases)
+        missile_phases = ('missile_fly', 'missile_hit', 'missile_clear')
+        if phase_name in missile_phases or (
+            rec.atk_missiles_fired > 0 or rec.def_missiles_fired > 0
+        ):
+            if rec.atk_missiles_fired > 0 or rec.def_missiles_fired > 0:
+                msl_text = (
+                    f"Missiles:  Atk fired {rec.atk_missiles_fired} "
+                    f"(killed {rec.missile_def_killed})   "
+                    f"Def fired {rec.def_missiles_fired} "
+                    f"(killed {rec.missile_atk_killed})"
+                )
+                col = _COLOR_MISSILE if phase_name in missile_phases else (160, 140, 80)
+                surface.blit(self._text(msl_text, col), (cr.x, stats_y))
+                stats_y += 18
+
+        # Attrition stats
         atk_losses = rec.atk_initial - rec.atk_final
         def_losses = rec.def_initial - rec.def_final
-        stats = (f"Attacker {rec.atk_initial} → {rec.atk_final}  "
-                 f"(lost {atk_losses})     "
-                 f"Defender {rec.def_initial} → {rec.def_final}  "
-                 f"(lost {def_losses})")
+        stats = (f"WarShips:  "
+                 f"Attacker {rec.atk_initial} → {rec.atk_final}  (lost {atk_losses})     "
+                 f"Defender {rec.def_initial} → {rec.def_final}  (lost {def_losses})")
         surface.blit(self._text(stats), (cr.x, stats_y))
 
-        # Round counter
-        phase_name, _ = self._phases[self._phase_idx]
-        if phase_name != 'result' and phase_name != 'scatter':
+        # Phase label (missile barrage or round counter)
+        if phase_name in missile_phases:
+            lbl = self._text("— Missile Barrage —", _COLOR_MISSILE)
+            surface.blit(lbl, (cr.right - lbl.get_width(), stats_y + 18))
+        elif phase_name not in ('result', 'scatter'):
             rnum = int(phase_name[1]) + 1
-            round_s = self._text(f"Round {rnum} of {len(rec.rounds)}", (140, 140, 180))
-            surface.blit(round_s, (cr.right - round_s.get_width(), stats_y + 30))
+            lbl  = self._text(f"Round {rnum} of {len(rec.rounds)}", (140, 140, 180))
+            surface.blit(lbl, (cr.right - lbl.get_width(), stats_y + 18))
 
-        # Outcome text (result phase only)
+        # Outcome text
         if phase_name == 'result':
             winner = self._faction_name(rec.winner_faction)
-            result_text = f"{winner} controls Star {rec.star_id}"
-            rs = self._title_text(result_text, (255, 220, 60))
-            surface.blit(rs, (cr.x + (cr.width - rs.get_width()) // 2,
-                               stats_y + 20))
-            hint = self._text("Click or press any key to continue",
-                              (100, 100, 140))
-            surface.blit(hint, (cr.x + (cr.width - hint.get_width()) // 2,
-                                stats_y + 42))
+            rs = self._title_text(f"{winner} controls Star {rec.star_id}", (255, 220, 60))
+            surface.blit(rs, (cr.x + (cr.width - rs.get_width()) // 2, stats_y + 20))
+            hint = self._text("Click or press any key to continue", (100, 100, 140))
+            surface.blit(hint, (cr.x + (cr.width - hint.get_width()) // 2, stats_y + 42))
 
     # ------------------------------------------------------------------
     # Helpers
