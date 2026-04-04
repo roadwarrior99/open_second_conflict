@@ -19,7 +19,7 @@ from second_conflict.model.game_state import GameState
 from second_conflict.model.star import Star
 from second_conflict.util.rng import rand
 import logging
-from math import floor
+from math import ceil as ceiling
 logger = logging.getLogger(__name__)
 
 _BOMBARD_RATE = 2   # troops killed per warship per bombardment action
@@ -263,16 +263,22 @@ def bombard(star: Star, attacker_faction: int, state: GameState) -> dict:
             continue
         if planet.troops <= 0:
             continue
+        if star.warships <= 0:
+            break
         logger.debug(f"Bombarding planet {pi + 1} with {attacker_remaining} attack power")
         killed = min(planet.troops, attacker_remaining)
+        if killed <= 0:
+            logger.debug(f"No troops killed on planet {pi + 1}. Attacker remaining: {attacker_remaining}"
+                         f", Troops: {planet.troops}!")
+            continue
         planet.troops -= killed
         attacker_remaining    -= killed
         killed_total += killed
         lost_ships = 0
-        lost_ships += floor(((killed / 3) * rand(100)/100))
+        lost_ships += ceiling((ceiling(killed / 3) * rand(100)/100))
         star.warships -= lost_ships
-        logger.debug(f"Planet {pi + 1}: killed {killed} troops, and we lost {lost_ships}"
-                     f" warships with {attacker_remaining} warships remaining. ")
+        logger.debug(f"Planet {pi + 1}: killed {killed} troops, and attacker lost {lost_ships}"
+                     f" warships with {attacker_remaining} attack power remaining. ")
 
         state.add_event('combat', attacker_faction, f"While bombarding planet {pi + 1}, we lost {lost_ships} warships! ")
         if planet.troops == 0:

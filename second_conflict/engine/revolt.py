@@ -9,6 +9,7 @@ from second_conflict.model.constants import EMPIRE_FACTION
 from second_conflict.model.game_state import GameState
 from second_conflict.util.rng import rand
 
+logger = __import__('logging').getLogger(__name__)
 REVOLT_THRESHOLD   = -10
 LOYALTY_DECAY_RATE =  1
 LOYALTY_RECOVER    =  1
@@ -47,23 +48,27 @@ def _process_star(star, state: GameState):
 
 
 def _trigger_revolt(star, state: GameState):
-    """Star reverts to Empire control; reset loyalty."""
+    """Star reverts to prior owner control; reset loyalty."""
+    logger.debug(f"Star {star.star_id} reverts to prior owner control")
     old_owner = star.owner_faction_id
     player = state.player_for_faction(old_owner)
     pname = player.name if player else f"0x{old_owner:02x}"
 
-    star.owner_faction_id = EMPIRE_FACTION
+    new_owner = 0
+    #find owner of planets that isn't star owner.
+    for planet in star.planets:
+        if planet.owner_faction_id != old_owner:
+            new_owner = planet.owner_faction_id
+            logger.debug(f"Star {star.star_id} reverts to owner {new_owner}")
+            break
+    star.owner_faction_id = new_owner
     star.loyalty = rand(3)
-    # Reset planet ownership to Empire
+    # Reset planet ownership to new_owner
     for p in star.planets:
-        p.owner_faction_id = EMPIRE_FACTION
+        p.owner_faction_id = new_owner
         p.morale = 1
 
     state.add_event(
         'revolt', old_owner,
-        f"Star {star.star_id} throws off {pname}'s control! Now held by The Empire."
-    )
-    state.add_event(
-        'revolt', EMPIRE_FACTION,
-        f"Star {star.star_id} revolts from {pname} — now under The Empire."
+        f"Star {star.star_id} throws off {pname}'s control! Now held by {state.player_for_faction(new_owner).name}."
     )
