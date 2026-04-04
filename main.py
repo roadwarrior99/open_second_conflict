@@ -30,7 +30,7 @@ import logging
 from second_conflict.ui.map_view import MapView
 from second_conflict.ui.side_panel import SidePanel
 from second_conflict.ui.sys_info_panel import SysInfoPanel
-
+from second_conflict.model.game_state import GameState, GameOptions
 # Layout constants
 SCREEN_W = 1100
 SCREEN_H = 760
@@ -206,8 +206,9 @@ def main(save_file: str, debug: bool = False):
         state = _load_file(save_file)
         state.options.dev_mode = debug
     else:
-        from second_conflict.model.game_state import GameState, GameOptions
-        state = GameState(options=GameOptions(dev_mode=debug))
+        options = GameOptions()
+        options.dev_mode = debug
+        state = GameState(options=options)
     if debug:
         # Disable event log for faster turn processing in dev mode
         state.options.show_events_log = False

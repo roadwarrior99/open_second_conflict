@@ -29,8 +29,7 @@ def random_name() -> str:
         candidates = _NAMES[:]
     name = random.choice(candidates)
     _used.add(name)
-    prefix = random.choice(_PREFIXES)
-    return f"{prefix} {name}"
+    return name
 
 
 def reset():
